@@ -17,10 +17,10 @@ SRCS = main.cpp chip8.cpp
 CXX = g++
 
 # Compiler flags
-CPPFLAGS = -std=c++17 -O0 -Wall -g
+CPPFLAGS = -std=c++20 -O0 -Wall -g
 INC_FLAGS := -I /usr/local/include
 LIB_FLAGS := -L /usr/local/lib
-LIBS := -lSDL3 -lSDL3_ttf
+LIBS := -lSDL3 -lSDL3_ttf -lSDL3_image
 
 # Object files
 OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
