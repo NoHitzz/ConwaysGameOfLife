@@ -11,7 +11,6 @@
 #include <SDL3_image/SDL_image.h>
 #include <iomanip>
 #include <iostream>
-#include <chrono>
 #include <sstream>
 #include <string>
 #include <algorithm>
@@ -20,6 +19,7 @@
 #include <unordered_map>
 
 #include "Texture.h"
+#include "Timer.h"
 
 const std::string programName = "Chip8-Emulator";
 
@@ -92,6 +92,10 @@ bool init() {
         return false;
     }
 
+    if(SDL_SetRenderVSync(renderer, 1) == false) {
+        error("SDL activating VSYNC failed", SDL_GetError());
+    }
+
     return true;
 }
 
@@ -130,14 +134,15 @@ void renderDebugRect(std::string name, int x, int y, int w, int h) {
 
     DebugRect r = debugRects.find(name)->second;
     SDL_Color& c = r.color;
-    SDL_Texture* text = createText(name, debugFont, c);
+    Texture text = Texture(renderer);
+    text.loadText(name, debugFont, c);
     SDL_FRect renderQuad = {(float) x, (float) y, (float) w, (float) h};
-    SDL_FRect textQuad = {(float) x + (w - text->w)/100.0f*r.xOffset, (float) y, (float) text->w, (float) text->h};
+    SDL_FRect textQuad = {(float) x + (w - text.getWidth())/100.0f*r.xOffset, (float) y, (float) text.getWidth(), (float) text.getHeight()};
     SDL_SetRenderDrawColor(renderer, c.r, c.g, c.b, 100);
     SDL_RenderRect(renderer, &renderQuad);
     SDL_SetRenderDrawColor(renderer, 25, 25, 25, 225);
     SDL_RenderRect(renderer, &textQuad);
-    SDL_RenderTexture(renderer, text, nullptr, &textQuad);
+    text.render((float) x + (w - text.getWidth())/100.0f*r.xOffset, (float) y);
 }
 
 int main (int argc, char *argv[]) {
@@ -166,21 +171,21 @@ int main (int argc, char *argv[]) {
 
     SDL_Color renderColor = {0,0,0};
 
-    auto ftimeStart = std::chrono::high_resolution_clock::now();
-    auto ftimeEnd = std::chrono::high_resolution_clock::now();
+    Timer timer = Timer();
 
     SDL_FRect dafoeclip = {0.0, 0.0, (float)dafoe.getWidth(), (float)dafoe.getHeight()};
 
+    int color = 0;
     while(!quit) {
-        float fps = 1000.0/std::chrono::duration_cast<std::chrono::milliseconds>(ftimeEnd-ftimeStart).count();
+        float fps = 1000.0/timer.getMs();
+        timer.start();
+        
+        SDL_GetRenderOutputSize(renderer, &screenWidth, &screenHeight);
+
         std::stringstream fpsStream;
         fpsStream << std::fixed << std::setprecision(2) << fps;
         std::string fpsStr = fpsStream.str();
         int fpsPadding = std::max((int) (5-fpsStr.find(".")), 1);
-        
-        ftimeStart = std::chrono::high_resolution_clock::now();
-
-        SDL_GetRenderOutputSize(renderer, &screenWidth, &screenHeight);
 
         while(SDL_PollEvent(&event)) {
             if(event.type == SDL_EVENT_QUIT)
@@ -215,9 +220,9 @@ int main (int argc, char *argv[]) {
             }
         }
 
-
-        SDL_Texture* textTex = createText(fpsText + std::string(fpsPadding, ' ') + fpsStr, fontMono, {200,50,50});
-        SDL_FRect destRect = {10.0, 10.0, (float)textTex->w, (float)textTex->h};
+        
+        Texture fpsTex = Texture(renderer);
+        fpsTex.loadText(fpsText + std::string(fpsPadding, ' ') + fpsStr, fontMono, {200,50,50});
     
         SDL_SetRenderDrawColor(renderer, renderColor.r, renderColor.g, renderColor.b, 255);
         SDL_RenderClear(renderer);
@@ -228,7 +233,10 @@ int main (int argc, char *argv[]) {
         float imgHeight = imgWidth * imgRatio;  
         float imgScale = (float)imgWidth/dafoe.getWidth();
 
-        SDL_RenderTexture(renderer, textTex, nullptr, &destRect);
+        SDL_FPoint mid = {imgWidth/2.0f-dafoeclip.x*imgScale, imgHeight/2.0f-dafoeclip.y*imgScale};
+        dafoe.setRotation(color%360, &mid);
+
+        fpsTex.render(10.0, 10.0);
         dafoe.render((screenWidth-imgWidth)/2 + dafoeclip.x*imgScale,
                 (screenHeight-imgHeight)/2 + dafoeclip.y*imgScale, 
                 dafoeclip.w*imgScale, dafoeclip.h*imgScale,
@@ -251,12 +259,16 @@ int main (int argc, char *argv[]) {
         for(int i = 0; i < 10*10; i++) {
             SDL_RenderPoint(renderer, screenWidth/2-5+(i%10), screenHeight/2-5+(i/10));
         }
+
+        color++;
         
         SDL_RenderPresent(renderer);
-        ftimeEnd = std::chrono::high_resolution_clock::now(); 
+        timer.stop();
     }
 
     TTF_CloseFont(fontSans);
+    TTF_CloseFont(debugFont);
+    TTF_CloseFont(fontMono);
     TTF_Quit();
     close();
         

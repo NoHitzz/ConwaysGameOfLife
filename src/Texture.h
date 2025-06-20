@@ -19,6 +19,10 @@ class Texture {
         SDL_Renderer* m_renderer; 
         SDL_Texture* m_texture;
 
+        SDL_FlipMode m_flip;
+        SDL_FPoint* m_rotCenter;
+        double m_rotation;
+
         int m_width;
         int m_height;
 
@@ -29,6 +33,11 @@ class Texture {
             m_width = 0;
             m_height = 0;
             m_renderer = renderer;
+
+            setBlendMode(SDL_BLENDMODE_BLEND);
+            m_flip = SDL_FLIP_NONE;
+            m_rotCenter = nullptr;
+            m_rotation = 0.0;
         }
 
         ~Texture() {
@@ -49,6 +58,26 @@ class Texture {
             return true;
         }
 
+        bool loadText(std::string text, TTF_Font* font, SDL_Color color) {
+            bool result = true;
+            destroy();
+            SDL_Surface* textSurface = TTF_RenderText_Blended(font, text.c_str(), text.length(), color);
+            if(textSurface == nullptr) {
+                error("TTF_RenderText_Blended failed", SDL_GetError());
+                result &= false;
+            }
+            m_texture = SDL_CreateTextureFromSurface(m_renderer, textSurface);
+            if(m_texture == nullptr) {
+                error("SDL_CreateTextureFromSurface failed", SDL_GetError());
+                result &= false;
+            }
+            
+            SDL_DestroySurface(textSurface);
+            m_width = m_texture->w;
+            m_height = m_texture->h;
+
+            return result;
+        }
 
         void destroy() {
             if(m_texture != nullptr) 
@@ -56,8 +85,33 @@ class Texture {
             m_texture = nullptr;
             m_width = 0;
             m_height = 0;
+            
+            setBlendMode(SDL_BLENDMODE_BLEND);
+            m_flip = SDL_FLIP_NONE;
+            m_rotCenter = nullptr;
+            m_rotation = 0.0;
         }
 
+        void colorMult(Uint8 r, Uint8 g, Uint8 b) {
+            SDL_SetTextureColorMod(m_texture, r, g, b);
+        }
+
+        void setBlendMode(SDL_BlendMode mode) {
+            SDL_SetTextureBlendMode(m_texture, mode);
+        }
+
+        void alphaMult(Uint8 alpha) {
+            SDL_SetTextureAlphaMod(m_texture, alpha);
+        }
+
+        void setRotation(double rotation, SDL_FPoint* center = nullptr) {
+            m_rotation = rotation;
+            m_rotCenter = center;
+        }
+
+        void flip(SDL_FlipMode flip) {
+            m_flip = flip;
+        }
 
         void render(float x, float y, SDL_FRect* clip = nullptr) {
             float width = m_width;
@@ -74,7 +128,7 @@ class Texture {
                 SDL_FRect* clip = nullptr) {
             SDL_FRect renderQuad = {x, y, 
                 width, height};
-            SDL_RenderTexture(m_renderer, m_texture, clip, &renderQuad);
+            SDL_RenderTextureRotated(m_renderer, m_texture, clip, &renderQuad, m_rotation, m_rotCenter, m_flip);
         }
 
         int getWidth() { return m_width; }
