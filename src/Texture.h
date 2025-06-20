@@ -44,7 +44,6 @@ class Texture {
             destroy();
         }
 
-
         bool loadImg(std::string path) {
             destroy();
             m_texture = IMG_LoadTexture(m_renderer, path.c_str());
