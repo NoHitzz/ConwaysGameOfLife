@@ -45,7 +45,7 @@ class ConwayApp : public SDLApp {
         int advance = 0;
 
         SDL_Surface* surface;
-        SDL_Texture* texture;
+        Texture tex;
 
     public:
         ConwayApp(int size) : SDLApp("Conway", 640, 480), gameSize(size), cellCount(gameSize*gameSize) { 
@@ -55,11 +55,9 @@ class ConwayApp : public SDLApp {
             surface = SDL_CreateSurface(gameSize, gameSize, SDL_PIXELFORMAT_XRGB8888);
             if(surface == nullptr)
                 std::cerr << SDL_GetError() << "\n";
-            texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XRGB8888,
-                                         SDL_TEXTUREACCESS_STREAMING, gameSize, gameSize);
-            if(texture == nullptr)
-                std::cerr << SDL_GetError() << "\n";
-            SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
+            
+            tex.setRenderer(renderer);
+            tex.loadBlank(gameSize, gameSize, SDL_TEXTUREACCESS_STREAMING);
 
             // for(int i = 0; i < cellCount; i++) { cells[i] = (rand()%2 > 0 ? 0x01 : 0x00); }
             for(int i = 0; i < cellCount; i++) { cells[i] = 0x00; }
@@ -79,7 +77,6 @@ class ConwayApp : public SDLApp {
         ~ConwayApp() { 
             TTF_CloseFont(fontSans);
             SDL_DestroySurface(surface);
-            SDL_DestroyTexture(texture);
             delete[] numbers;
             delete[] cells;
             delete[] swap;
@@ -155,6 +152,7 @@ class ConwayApp : public SDLApp {
                 diff -= 1;
             }
 
+            // TODO: Remove (Debugging)
             // std::bitset<8> bits1(cells[idx]);
             // std::bitset<8> bits2(swap[idx]);
             // std::cout << bits1 << ", "  << bits2 << "\n";
@@ -180,12 +178,13 @@ class ConwayApp : public SDLApp {
                 advance--;
             }
 
+            // TODO: Remove if you do the thing below...
             calculateCount();
 
             for(int y = 0; y < gameSize; y++) {
                 for(int x = 0; x < gameSize; x++) {
                     
-                    //TODO: remove? or not
+                    //TODO: MAYBE UPDATE COUNT of neighbours while updatingState
                     // calculateCount(x,y);
                     
                     if(!paused || advancing) {
@@ -211,6 +210,7 @@ class ConwayApp : public SDLApp {
             Uint32* pixels = (Uint32*) (surface->pixels);
             pixels[x + y * (surface->pitch/4)] = (alive ?  0xFFFFFFFF : 0xFF000000);
 
+            // TODO: REMOVE THIS 
             // if(!alive)
                 // return;
             // SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
@@ -219,6 +219,8 @@ class ConwayApp : public SDLApp {
         }
 
         void renderCellText(int x, int y) {
+            if(gameSize > 150)
+                return;
             int count = (cellMaskCount & cells[x + y*gameSize]) >> 1;
             SDL_FRect point = {(float)(offsetX + x * pointSize), (float)(offsetY + y * pointSize), (float)pointSize, (float)pointSize};
             Texture* text = &numbers[count];
@@ -270,22 +272,11 @@ class ConwayApp : public SDLApp {
 
         int once = true;
         void render() {
-            Texture tex = Texture(renderer);
-            // tex.loadSurface(surface);
-            // SDL_SetTextureScaleMode(tex.getTexture(), SDL_SCALEMODE_NEAREST);
-            // tex.render(offsetX, offsetY, gameSize, gameSize);
+            tex.update(surface);
+            SDL_SetTextureScaleMode(tex.getTexture(), SDL_SCALEMODE_NEAREST);
+            tex.render(offsetX, offsetY, gameSize*pointSize, gameSize*pointSize);
                         
-            SDL_FRect r = {(float)offsetX, (float)offsetY, (float)gameSize*pointSize, (float)gameSize*pointSize};
-
-            SDL_UpdateTexture(texture, nullptr, surface->pixels, surface->pitch);
-            SDL_RenderTexture(renderer, texture, nullptr, &r);
-            // SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
-            // if(texture == nullptr)
-            //     std::cerr << SDL_GetError() << "\n";
-            // SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_NONE);
-            // SDL_RenderTexture(renderer, texture, nullptr, &r);
-
-            if(once) {
+            if(false) {
             for(int i = 0; i < gameSize*gameSize; i++) { 
                 if(i % gameSize == 0 )
                     std::cout << "\n";
@@ -303,6 +294,8 @@ class ConwayApp : public SDLApp {
             if(focusCellX != -1 && focusCellY != -1)
                 focus();
             
+            renderDebugRect("Conway's Game of Life", 
+                    offsetX, offsetY, gameSize * pointSize, gameSize * pointSize); 
             renderDebugRect("mid", 
                     (screenWidth)/2.0, 20, screenWidth/2.0-40, screenHeight-40); 
             renderDebugRect("mid", 
