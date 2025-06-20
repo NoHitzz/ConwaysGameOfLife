@@ -13,6 +13,7 @@
 #include <SDL3_image/SDL_image.h>
 #include <iostream>
 #include <string>
+#include <vector>
 
 class Texture {
     private:
@@ -27,8 +28,7 @@ class Texture {
         int m_height;
 
     public:
-        Texture(SDL_Renderer* renderer) {
-            assert(renderer != nullptr);
+        Texture(SDL_Renderer* renderer = nullptr) {
             m_texture = nullptr;
             m_width = 0;
             m_height = 0;
@@ -44,6 +44,10 @@ class Texture {
             destroy();
         }
 
+        void setRenderer(SDL_Renderer* renderer) {
+            m_renderer = renderer;
+        }
+
         bool loadImg(std::string path) {
             destroy();
             m_texture = IMG_LoadTexture(m_renderer, path.c_str());
@@ -55,6 +59,31 @@ class Texture {
             m_width = m_texture->w;
             m_height = m_texture->h;
             return true;
+        }
+        
+        bool loadImgFromMemory(void* pixels, int width, int height, SDL_PixelFormat format, int pitch, SDL_Palette* palette) {
+            destroy();
+            bool result = true;
+            SDL_Surface* surface = SDL_CreateSurfaceFrom(width, height, format, pixels, pitch);
+            if(surface == nullptr) {
+                error("SDL_CreateSurfaceFrom failed", SDL_GetError());
+                result &= false;
+            }
+            
+            SDL_SetSurfacePalette(surface, palette);
+            m_texture = SDL_CreateTextureFromSurface(m_renderer, surface);
+            if(m_texture == nullptr) {
+                error("SDL_CreateTextureFromSurface failed", SDL_GetError());
+                result &= false;
+            }
+            
+            SDL_DestroySurface(surface);
+            SDL_DestroyPalette(palette);
+            m_width = m_texture->w;
+            m_height = m_texture->h;
+
+            return result;
+
         }
 
         bool loadText(std::string text, TTF_Font* font, SDL_Color color) {
@@ -76,6 +105,39 @@ class Texture {
             m_height = m_texture->h;
 
             return result;
+        }
+
+        bool loadTextFast(std::string text, TTF_Font* font, SDL_Color color) {
+            bool result = true;
+            destroy();
+            SDL_Surface* textSurface = TTF_RenderText_Solid(font, text.c_str(), text.length(), color);
+            if(textSurface == nullptr) {
+                error("TTF_RenderText_Blended failed", SDL_GetError());
+                result &= false;
+            }
+            m_texture = SDL_CreateTextureFromSurface(m_renderer, textSurface);
+            if(m_texture == nullptr) {
+                error("SDL_CreateTextureFromSurface failed", SDL_GetError());
+                result &= false;
+            }
+            
+            SDL_DestroySurface(textSurface);
+            m_width = m_texture->w;
+            m_height = m_texture->h;
+
+            return result;
+        }
+
+        static SDL_Palette* generateGrayscalePalette(const int steps) {
+            SDL_Palette* pal = SDL_CreatePalette(steps);
+            std::vector<SDL_Color> colors(steps);
+            for (int i = 0; i < steps; i++) {
+                Uint8 c = (Uint8) (255.0*((float)i/steps));
+                colors[i] = {c, c, c, 0xFF};
+            }
+
+            SDL_SetPaletteColors(pal, colors.data(), 0, steps);
+            return pal;
         }
 
         void destroy() {
@@ -127,6 +189,7 @@ class Texture {
                 SDL_FRect* clip = nullptr) {
             SDL_FRect renderQuad = {x, y, 
                 width, height};
+
             SDL_RenderTextureRotated(m_renderer, m_texture, clip, &renderQuad, m_rotation, m_rotCenter, m_flip);
         }
 

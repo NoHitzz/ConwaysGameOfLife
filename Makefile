@@ -37,7 +37,7 @@ $(BUILD_DIR)/%.cpp.o: $(SRC_DIRS)/%.cpp
 
 .PHONY: run
 run: 
-	./$(BUILD_DIR)/$(TARGET)
+	./$(BUILD_DIR)/$(TARGET) 
 
 .PHONY: clean
 clean:

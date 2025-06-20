@@ -110,6 +110,8 @@ class SDLApp {
                     mouseUpEventHandler(event);
                 else if (event.type == SDL_EVENT_MOUSE_MOTION)
                     mouseMoveEventHandler(event);
+                else if (event.type == SDL_EVENT_WINDOW_RESIZED)
+                    windowResized();
             }
         }
 
@@ -145,6 +147,8 @@ class SDLApp {
         virtual void mouseDownEventHandler(SDL_Event& event) { }
        
         virtual void mouseMoveEventHandler(SDL_Event& event) { }
+        
+        virtual void windowResized() { }
 
         void renderDebugRect(std::string name, int x, int y, int w, int h) {
             if(!debugRects.contains(name)) {
