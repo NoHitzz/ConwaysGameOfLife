@@ -5,12 +5,12 @@
 // Noah Hitz 2025
 // 
 
-#include "testApp.h"
+// #include "testApp.h"
 #include "ConwayApp.h"
 
 
 int main (int argc, char *argv[]) {
-    int size = 16;
+    int size = 300;
     if(argc >= 2) {
         std::cout << "Size set to: " + std::string(argv[1]) << "\n";
         size = std::stoi(std::string(argv[1]));

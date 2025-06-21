@@ -57,7 +57,7 @@ class ConwayApp : public SDLApp {
                 std::cerr << SDL_GetError() << "\n";
             
             tex.setRenderer(renderer);
-            tex.loadBlank(gameSize, gameSize, SDL_TEXTUREACCESS_STREAMING);
+            tex.loadBlank(gameSize, gameSize, SDL_TEXTUREACCESS_STREAMING, SDL_PIXELFORMAT_RGBA8888);
 
             // for(int i = 0; i < cellCount; i++) { cells[i] = (rand()%2 > 0 ? 0x01 : 0x00); }
             for(int i = 0; i < cellCount; i++) { cells[i] = 0x00; }
@@ -100,7 +100,7 @@ class ConwayApp : public SDLApp {
                 numbers = nullptr;
             }
 
-            fontSans = TTF_OpenFont("resources/OpenSans-Regular.ttf", fontSize);
+            fontSans = TTF_OpenFont("/Users/noahhitz/Documents/Projects/chip8-emulator/resources/OpenSans-Regular.ttf", fontSize);
             if(fontSans == nullptr) 
                 error("SDL Font creation failed", SDL_GetError());
 
@@ -219,8 +219,8 @@ class ConwayApp : public SDLApp {
         }
 
         void renderCellText(int x, int y) {
-            if(gameSize > 150)
-                return;
+            // if(gameSize > 150)
+                // return;
             int count = (cellMaskCount & cells[x + y*gameSize]) >> 1;
             SDL_FRect point = {(float)(offsetX + x * pointSize), (float)(offsetY + y * pointSize), (float)pointSize, (float)pointSize};
             Texture* text = &numbers[count];

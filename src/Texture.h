@@ -53,6 +53,7 @@ class Texture {
         }
 
         bool loadSurface(SDL_Surface* surface) {
+            destroy();
             m_texture = SDL_CreateTextureFromSurface(m_renderer, surface);
             if(m_texture == nullptr) {
                 error("SDL_CreateTextureFromSurface failed", SDL_GetError());
@@ -66,10 +67,10 @@ class Texture {
 
         }
 
-        bool loadBlank(int width, int height, SDL_TextureAccess access) {
+        bool loadBlank(int width, int height, SDL_TextureAccess access, SDL_PixelFormat format) {
             destroy();
 
-            m_texture = SDL_CreateTexture(m_renderer, SDL_PIXELFORMAT_RGBA8888, access, width, height);
+            m_texture = SDL_CreateTexture(m_renderer, format, access, width, height);
             if(m_texture == nullptr) {
                 error("SDL_CreateTexture failed", SDL_GetError());
                 return false;
@@ -161,8 +162,8 @@ class Texture {
             return result;
         }
 
-        void update(SDL_Surface* surface) {
-            SDL_UpdateTexture(m_texture, nullptr, surface->pixels, surface->pitch);
+        void update(SDL_Surface* surface, SDL_Rect* clip = nullptr) {
+            SDL_UpdateTexture(m_texture, clip, surface->pixels, surface->pitch);
         }
 
         static SDL_Palette* generateGrayscalePalette(const int steps) {

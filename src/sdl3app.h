@@ -51,6 +51,7 @@ class SDLApp {
         const std::string fpsText = "Fps:";
         const int fpsFontSize = 16;
         TTF_Font* fpsFont = nullptr;
+        Texture fpsTexture;
         std::unordered_map<std::string, DebugRect> debugRects{}; 
 
     public:
@@ -77,12 +78,15 @@ class SDLApp {
     
             SDL_zero(event);
 
-            fpsFont = TTF_OpenFont("resources/RobotoMono-Regular.ttf", fpsFontSize);
-            debugFont = TTF_OpenFont("resources/RobotoMono-Regular.ttf", debugFontSize);
+            // TODO: Fix relative path by combining app path with relative path for absolute path
+            fpsFont = TTF_OpenFont("/Users/noahhitz/Documents/Projects/chip8-emulator/resources/RobotoMono-Regular.ttf", fpsFontSize);
+            debugFont = TTF_OpenFont("/Users/noahhitz/Documents/Projects/chip8-emulator/resources/RobotoMono-Regular.ttf", debugFontSize);
 
             if(debugFont == nullptr || fpsFont == nullptr) 
                 error("SDL font creation failed", SDL_GetError());
 
+            fpsTexture.setRenderer(renderer);
+            fpsTexture.loadBlank(256, 256, SDL_TEXTUREACCESS_STREAMING, SDL_PIXELFORMAT_ARGB8888);
         }
 
         ~SDLApp() {
@@ -195,17 +199,21 @@ class SDLApp {
             fpsStream << std::fixed << std::setprecision(2) << fps;
             std::string fpsStr = fpsStream.str();
             int fpsPadding = std::max((int) (5-fpsStr.find(".")), 1);
-            Texture fpsTex = Texture(renderer);
-            fpsTex.loadText(fpsText + std::string(fpsPadding, ' ') + fpsStr, fpsFont, {200,50,50});
-            SDL_FRect fpsRect = {offset, offset, (float)fpsTex.getWidth() + textOffsetX*2, 
-                (float)fpsTex.getHeight() + textOffsetTop + textOffsetBottom};
+            fpsStr = fpsText + std::string(fpsPadding, ' ') + fpsStr;
+            SDL_Surface* textSurface = TTF_RenderText_Blended(fpsFont, fpsStr.c_str(), fpsStr.length(), {200,50,50});
+            SDL_FRect fclip = {0.0, 0.0, (float)textSurface->w, (float)textSurface->h};
+            // SDL_Rect clip = {0, 0, textSurface->w, textSurface->h};
+            fpsTexture.update(textSurface);
+            SDL_FRect fpsRect = {offset, offset, (float)fclip.w + textOffsetX*2, 
+                (float)fclip.h + textOffsetTop + textOffsetBottom};
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
             SDL_SetRenderDrawColor(renderer, 25, 25, 25, 128);
             SDL_RenderFillRect(renderer, &fpsRect);
             SDL_SetRenderDrawColor(renderer, 255, 255, 255, 30);
             SDL_RenderRect(renderer, &fpsRect);
 
-            fpsTex.render(offset + textOffsetX, offset + textOffsetTop);
+            fpsTexture.render(offset + textOffsetX, offset + textOffsetTop, &fclip);
+            SDL_DestroySurface(textSurface);
         }
 
         void error(std::string msg, std::string detail = "") {
