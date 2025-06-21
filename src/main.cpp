@@ -14,10 +14,6 @@ int main (int argc, char *argv[]) {
     if(argc >= 2) {
         std::cout << "Size set to: " + std::string(argv[1]) << "\n";
         size = std::stoi(std::string(argv[1]));
-        // if(size%8 != 0) {
-            // std::cout << "Size invalid, needs to be multiple of 8" << "\n";
-            // size = 16;
-        // }
     }
 
     ConwayApp app = ConwayApp(size);

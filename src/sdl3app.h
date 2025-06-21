@@ -33,10 +33,12 @@ inline SDL_Color hslToRgb(double h, double s, double l);
 class SDLApp {
     protected:
         const std::string programName;
+        const std::string basePath;
         int screenWidth, screenHeight;
 
         SDL_Window* window = nullptr;
         SDL_Renderer* renderer = nullptr;
+        float windowScreenRatio = 1.0;
 
         SDL_Event event;
         bool quit = false;
@@ -46,16 +48,21 @@ class SDLApp {
         
         int debugFontSize = 14;
         TTF_Font* debugFont = nullptr;
+        TTF_Font* monoFont = nullptr;
+        int monoFontSize = 20;
 
     private:
+        TTF_Font* fpsFont = nullptr;
         const std::string fpsText = "Fps:";
         const int fpsFontSize = 16;
-        TTF_Font* fpsFont = nullptr;
         Texture fpsTexture;
         std::unordered_map<std::string, DebugRect> debugRects{}; 
 
     public:
-        SDLApp(std::string name, int initWidth, int initHeight) {
+        SDLApp(std::string name, int initWidth, int initHeight) : programName(name), basePath(SDL_GetBasePath()) {
+            if(basePath.empty())
+                error("SDL failed to get app directory path", SDL_GetError());
+
             srand(time(nullptr));
             screenWidth = initWidth;
             screenHeight = initHeight;
@@ -78,11 +85,13 @@ class SDLApp {
     
             SDL_zero(event);
 
-            // TODO: Fix relative path by combining app path with relative path for absolute path
-            fpsFont = TTF_OpenFont("/Users/noahhitz/Documents/Projects/chip8-emulator/resources/RobotoMono-Regular.ttf", fpsFontSize);
-            debugFont = TTF_OpenFont("/Users/noahhitz/Documents/Projects/chip8-emulator/resources/RobotoMono-Regular.ttf", debugFontSize);
+            windowScreenRatio = SDL_GetWindowPixelDensity(window);
 
-            if(debugFont == nullptr || fpsFont == nullptr) 
+            monoFont = TTF_OpenFont((getBasePath() + "../resources/RobotoMono-Regular.ttf").c_str(), monoFontSize);
+            fpsFont = TTF_OpenFont((getBasePath() + "../resources/RobotoMono-Regular.ttf").c_str(), fpsFontSize);
+            debugFont = TTF_OpenFont((getBasePath() + "../resources/RobotoMono-Regular.ttf").c_str(), debugFontSize);
+
+            if(debugFont == nullptr || monoFont == nullptr || fpsFont == nullptr) 
                 error("SDL font creation failed", SDL_GetError());
 
             fpsTexture.setRenderer(renderer);
@@ -94,6 +103,7 @@ class SDLApp {
                 delete r.second.text;
             TTF_CloseFont(debugFont);
             TTF_CloseFont(fpsFont);
+            TTF_CloseFont(monoFont);
             SDL_DestroyWindow(window);
             SDL_DestroyRenderer(renderer);
             TTF_Quit();
@@ -123,10 +133,8 @@ class SDLApp {
             while(!quit) {
                 timer.start();
                 SDL_GetRenderOutputSize(renderer, &screenWidth, &screenHeight);
-                SDL_SetRenderDrawColor(renderer, 
-                    background.r, background.g, background.b, 255);
+                SDL_SetRenderDrawColor(renderer, background.r, background.g, background.b, 255);
                 SDL_RenderClear(renderer);
-
                 
                 eventHandler();
                 render();
@@ -138,6 +146,10 @@ class SDLApp {
                 lastFrameTimeMs = timer.getMs();
             }
         }
+
+        std::string getBasePath() { return basePath; }
+
+
 
     protected:
         virtual void render() { }
@@ -200,7 +212,8 @@ class SDLApp {
             std::string fpsStr = fpsStream.str();
             int fpsPadding = std::max((int) (5-fpsStr.find(".")), 1);
             fpsStr = fpsText + std::string(fpsPadding, ' ') + fpsStr;
-            SDL_Surface* textSurface = TTF_RenderText_Blended(fpsFont, fpsStr.c_str(), fpsStr.length(), {200,50,50});
+            SDL_Surface* textSurface = TTF_RenderText_Blended(fpsFont, 
+                    fpsStr.c_str(), fpsStr.length(), {200,50,50});
             SDL_FRect fclip = {0.0, 0.0, (float)textSurface->w, (float)textSurface->h};
             // SDL_Rect clip = {0, 0, textSurface->w, textSurface->h};
             fpsTexture.update(textSurface);
@@ -250,4 +263,24 @@ inline SDL_Color hslToRgb(double h, double s, double l) {
     float b = hue2rgb(p, q, h - 1./3) * 255;
     return SDL_Color{(Uint8) r, (Uint8) g, (Uint8) b};
 }
+
+inline void drawRectangle(SDL_Renderer* renderer, SDL_FRect& rect, int thickness) {
+    SDL_FPoint points[4] = {
+        {rect.x+thickness/2.f, rect.y-thickness/2.f}, 
+        {rect.x + rect.w-thickness/2.f, rect.y-thickness/2.f}, 
+        {rect.x + rect.w - thickness/2.f, rect.y + rect.h - thickness/2.f}, 
+        {rect.x - thickness/2.f, rect.y + rect.h + thickness/2.f}};
+    SDL_FRect r;
+    r = {points[0].x, points[0].y, rect.w-thickness, (float)thickness};
+    SDL_RenderFillRect(renderer, &r);
+    r = {points[1].x, points[1].y, (float)thickness, rect.h + thickness};
+    SDL_RenderFillRect(renderer, &r);
+    r = {points[2].x, points[2].y, -(rect.w-thickness), (float)thickness};
+    SDL_RenderFillRect(renderer, &r);
+    r = {points[3].x, points[3].y, (float)thickness, -(rect.h + thickness)};
+    SDL_RenderFillRect(renderer, &r);
+}
+
+
+
 #endif /* SDLAPP_H */

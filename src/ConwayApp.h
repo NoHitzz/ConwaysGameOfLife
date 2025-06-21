@@ -18,9 +18,9 @@ class ConwayApp : public SDLApp {
     private: 
         TTF_Font* fontSans = nullptr; 
 
-        static const int minOffset = 24;
         const int gameSize = 500;
         const int cellCount;
+        int minOffset = 20;
         int pointSize; 
         int offsetX;
         int offsetY;
@@ -48,11 +48,24 @@ class ConwayApp : public SDLApp {
 
         SDL_Surface* gameSurface;
         Texture gameTexture;
+        Texture helpTexture;
+        int helpTextOffset = 8;
+
+        std::string helpText = 
+            "r: reset, space: pause/continue, left mouse button: inspect cell";
 
     public:
-        ConwayApp(int size) : SDLApp("Conway", 640,  480), gameSize(size), cellCount(gameSize*gameSize) { 
+        ConwayApp(int size) 
+            : SDLApp("Conway's Game of Life", 640,  480), 
+            gameSize(size), cellCount(gameSize*gameSize) { 
             withTextRendering = (gameSize < textCutoff);
-            SDL_SetWindowMinimumSize(window, (gameSize/2)+minOffset, (gameSize/2)+minOffset);
+            helpTexture.setRenderer(renderer);
+            helpTexture.loadText(helpText, monoFont, {200, 200, 200});
+            minOffset += helpTexture.getHeight();
+            SDL_SetWindowMinimumSize(window, 
+                    std::max((gameSize+2*minOffset)/windowScreenRatio, 
+                        (2*helpTextOffset + helpTexture.getWidth())/windowScreenRatio), 
+                    (gameSize+2*minOffset)/windowScreenRatio);
 
             cells = new uint8_t[cellCount];
             swap = new uint8_t[cellCount];
@@ -62,24 +75,23 @@ class ConwayApp : public SDLApp {
                 std::cerr << SDL_GetError() << "\n";
             
             gameTexture.setRenderer(renderer);
-            gameTexture.loadBlank(gameSize, gameSize, SDL_TEXTUREACCESS_STREAMING, SDL_PIXELFORMAT_RGBA8888);
+            gameTexture.loadBlank(gameSize, gameSize, 
+                    SDL_TEXTUREACCESS_STREAMING, SDL_PIXELFORMAT_RGBA8888);
             SDL_SetTextureScaleMode(gameTexture.getTexture(), SDL_SCALEMODE_NEAREST);
             
-
+            
             for(int i = 0; i < cellCount; i++) { cells[i] = (rand()%3 < 1); }
-            calculateCount();
 
-            // for(int i = 0; i < cellCount; i++) { cells[i] = (rand()%2 > 0 ? 0x01 : 0x00); }
+            // Test pattern: honeycomb
             // for(int i = 0; i < cellCount; i++) { cells[i] = 0x00; }
-            // calculateCount();
-
-            // This pattern should become honeycomb
             // int x = gameSize/2.f;
             // int y = gameSize/2.f;
             // cells[x + gameSize*y] = 0x01;
             // cells[x+1 + gameSize*(y+1)] = 0x01;
             // cells[x+2 + gameSize*(y+1)] = 0x01;
             // cells[x+1 + gameSize*(y+2)] = 0x01;
+            
+            calculateCount();
 
             windowResized();
         }
@@ -108,7 +120,7 @@ class ConwayApp : public SDLApp {
                 fontSans = nullptr;
             }
             
-            fontSans = TTF_OpenFont("/Users/noahhitz/Documents/Projects/chip8-emulator/resources/OpenSans-Regular.ttf", fontSize);
+            fontSans = TTF_OpenFont((getBasePath() + "../resources/OpenSans-Regular.ttf").c_str(), fontSize);
             if(fontSans == nullptr) 
                 error("SDL Font creation failed", SDL_GetError());
 
@@ -128,7 +140,7 @@ class ConwayApp : public SDLApp {
             for(int i = 0; i < 9; i++) {
                 int x = (numWidth-nums[i].getWidth())/2;
                 int y = (numHeight-nums[i].getHeight())/2;
-                SDL_FRect dest = {(float)((i%3)*numWidth + x), (float)((i/3)*numHeight + y), 
+                SDL_FRect dest = {(float)((i%3)*numWidth + x), (float)((int)(i/3)*numHeight + y), 
                     (float)nums[i].getWidth(), (float)nums[i].getHeight()};
                 nums[i].render(dest.x, dest.y);
             }
@@ -148,7 +160,9 @@ class ConwayApp : public SDLApp {
                     int up = (y-1 < 0 ? gameSize-1 : y-1);
                     int down = (y+1 >= gameSize ? 0 : y+1);
 
-                    SDL_Point neighbours[] = {{left, up}, {x, up}, {right, up}, {left, y}, {right,y}, {left, down}, {x, down}, {right, down}};
+                    SDL_Point neighbours[] = {
+                        {left, up}, {x, up}, {right, up}, {left, y}, 
+                        {right,y}, {left, down}, {x, down}, {right, down}};
                     int aliveNeighb = 0;
                     for(int i = 0; i < std::size(neighbours); i++) {
                         aliveNeighb += cells[neighbours[i].x + neighbours[i].y * gameSize] & cellMaskAlive;
@@ -159,73 +173,41 @@ class ConwayApp : public SDLApp {
             }
         }
 
-        void updateState(int x, int y) {
+        void updateCellState(int x, int y) {
             int idx = x + y * gameSize;
 
             bool alive = cells[idx] & cellMaskAlive;
             int aliveNeighb = (cells[idx] & cellMaskCount) >> 1;
-            int diff = 0;
             if(alive && aliveNeighb >= 2 && aliveNeighb <= 3) {
                 swap[idx] = (cells[idx] & cellMaskCount) | cellMaskAlive;
-                diff = 0;
             } else if(!alive && aliveNeighb == 3) {
                 swap[idx] = (cells[idx] & cellMaskAlive) | cellMaskAlive;
-                diff += 1;
             } else {
                 swap[idx] &= (cells[idx] & cellMaskCount);
-                diff -= 1;
             }
-
-            // TODO: Remove (Debugging)
-            // std::bitset<8> bits1(cells[idx]);
-            // std::bitset<8> bits2(swap[idx]);
-            // std::cout << bits1 << ", "  << bits2 << "\n";
-
-            // int left = (x-1 < 0 ? gameSize-1 : x-1);
-            // int right = (x+1 >= gameSize ? 0 : x+1);
-            // int up = (y-1 < 0 ? gameSize-1 : y-1);
-            // int down = (y+1 >= gameSize ? 0 : y+1);
-
-            // SDL_Point neighbours[] = {{left, up}, {x, up}, {right, up}, {left, y}, {right,y}, {left, down}, {x, down}, {right, down}};
-            // for(int i = 0; i < std::size(neighbours); i++) {
-            //     int nIdx = neighbours[i].x + neighbours[i].y * gameSize;
-            //     cells[nIdx] = (1 << (((cells[nIdx] & cellMaskCount) >> 1) + diff)) | (cells[nIdx] & cellMaskAlive);
-            // }
-
-            // cells[x + y * gameSize] = (aliveNeighb << 1) | (cells[x + y * gameSize] & cellMaskAlive);
         }
 
         void update() {
-            bool advancing = false;
-            if(paused && advance > 0) {
-                advancing = true;
-                advance--;
-            }
-
-
             for(int y = 0; y < gameSize; y++) {
                 for(int x = 0; x < gameSize; x++) {
-                    
-                    //TODO: MAYBE UPDATE COUNT of neighbours while updatingState
-                    // calculateCount(x,y);
-                    
-                    if(!paused || advancing) {
-                        updateState(x, y);
+                    if(!paused || advance > 0) {
+                        updateCellState(x, y);
                     }
 
-                    renderCell(x,y);
-                    renderCellText(x,y);
+                    renderCellToTexture(x,y);
                 }
-            }
-
-            if(!paused || advancing) {
-                uint8_t* temp = cells;
-                cells = swap;
-                swap = temp;
             }
         }
 
-        void renderCell(int x, int y) {
+        void renderCellText() {
+            for(int y = 0; y < gameSize; y++) {
+                for(int x = 0; x < gameSize; x++) {
+                    renderCellTextToTexture(x,y);
+                }
+            }
+        }
+
+        void renderCellToTexture(int x, int y) {
             int idx = x + y * gameSize;
             bool alive = cells[idx] & cellMaskAlive;
             
@@ -233,14 +215,19 @@ class ConwayApp : public SDLApp {
             pixels[x + y * (gameSurface->pitch/4)] = (alive ?  0xFFFFFFFF : 0xFF000000);
         }
 
-        void renderCellText(int x, int y) {
-            if(!withTextRendering)
-                return;
+        void renderCellTextToTexture(int x, int y) {
             int count = (cellMaskCount & cells[x + y*gameSize]) >> 1;
-            SDL_FRect point = {(float)(offsetX + x * pointSize), (float)(offsetY + y * pointSize), (float)pointSize, (float)pointSize};
-            SDL_FRect clip = {(float)((count%3)*numWidth), (float)((int)(count/3)*numHeight), 
+            SDL_FRect point = {
+                (float)(offsetX + x * pointSize), 
+                (float)(offsetY + y * pointSize), 
+                (float)pointSize, (float)pointSize};
+            SDL_FRect clip = {
+                (float)((count%3)*numWidth), 
+                (float)((int)(count/3)*numHeight), 
                 (float)numWidth, (float)numHeight};
-            SDL_FRect textRect = {point.x + (pointSize - numWidth)/2.f, point.y + (pointSize-numHeight)/2.f, 
+            SDL_FRect textRect = {
+                point.x + (pointSize - numWidth)/2.f, 
+                point.y + (pointSize-numHeight)/2.f, 
                 (float)numWidth, (float)numHeight};
             numbers.render(textRect.x, textRect.y, &clip);
         }
@@ -254,16 +241,23 @@ class ConwayApp : public SDLApp {
             int up = (y-1 < 0 ? gameSize-1 : y-1);
             int down = (y+1 >= gameSize ? 0 : y+1);
 
-            SDL_Point neighbours[] = {{left, up}, {x, up}, {right, up}, {left, y}, {right,y}, {left, down}, {x, down}, {right, down}};
+            SDL_Point neighbours[] = { {left, up}, {x, up}, {right, up}, 
+                {left, y}, {right,y}, {left, down}, {x, down}, {right, down}};
 
-            SDL_FRect point = {(float)(offsetX + x * pointSize), (float)(offsetY + y * pointSize), (float)pointSize, (float)pointSize};
+            SDL_FRect point = {
+                (float)(offsetX + x * pointSize), 
+                (float)(offsetY + y * pointSize), 
+                (float)pointSize, (float)pointSize};
 
             for(int i = 0; i < std::size(neighbours); i++) {
                 int px = neighbours[i].x;
                 int py = neighbours[i].y;
                 if(!(cells[px + py * gameSize] & cellMaskAlive))
                     continue;
-                SDL_FRect point = {(float)(offsetX + px * pointSize), (float)(offsetY + py * pointSize), (float)pointSize, (float)pointSize};
+                SDL_FRect point = {
+                    (float)(offsetX + px * pointSize), 
+                    (float)(offsetY + py * pointSize), 
+                    (float)pointSize, (float)pointSize};
                 SDL_SetRenderDrawColor(renderer, 255, 255, 0, 200);
                 drawRectangle(renderer, point, 6);
             }
@@ -272,38 +266,32 @@ class ConwayApp : public SDLApp {
             drawRectangle(renderer, point, 10);
         }
 
-        static void drawRectangle(SDL_Renderer* renderer, SDL_FRect& rect, int thickness) {
-            SDL_FPoint points[4] = {{rect.x+thickness/2.f, rect.y-thickness/2.f}, {rect.x + rect.w-thickness/2.f, rect.y-thickness/2.f}, 
-                {rect.x + rect.w - thickness/2.f, rect.y + rect.h - thickness/2.f}, {rect.x - thickness/2.f, rect.y + rect.h + thickness/2.f}};
-            SDL_FRect r;
-            r = {points[0].x, points[0].y, rect.w-thickness, (float)thickness};
-            SDL_RenderFillRect(renderer, &r);
-            r = {points[1].x, points[1].y, (float)thickness, rect.h + thickness};
-            SDL_RenderFillRect(renderer, &r);
-            r = {points[2].x, points[2].y, -(rect.w-thickness), (float)thickness};
-            SDL_RenderFillRect(renderer, &r);
-            r = {points[3].x, points[3].y, (float)thickness, -(rect.h + thickness)};
-            SDL_RenderFillRect(renderer, &r);
-        }
-
         void render() {
-            // TODO: Remove if you decide to combine update with count calculation
             calculateCount();
-
+            
+            update(); 
             gameTexture.update(gameSurface);
             gameTexture.render(offsetX, offsetY, gameSize*pointSize, gameSize*pointSize);
 
-            update(); 
+            if(withTextRendering)
+                renderCellText();
 
             if(focusCellX != -1 && focusCellY != -1)
                 focus();
             
-            renderDebugRect("Conway's Game of Life", 
-                    offsetX, offsetY, gameSize * pointSize, gameSize * pointSize); 
-            renderDebugRect("mid", 
-                    (screenWidth)/2.0, 20, screenWidth/2.0-40, screenHeight-40); 
-            renderDebugRect("mid", 
-                    20, screenHeight/2.0, screenWidth-40, screenHeight/2.0-40); 
+            renderDebugRect("Conway's Game of Life", offsetX, offsetY, 
+                    gameSize * pointSize, gameSize * pointSize); 
+
+            if(!paused || advance > 0) {
+                uint8_t* temp = cells;
+                cells = swap;
+                swap = temp;
+            }
+
+            if(advance > 0)
+                advance--;
+
+            helpTexture.render(helpTextOffset, screenHeight-helpTexture.getHeight()-helpTextOffset);
         }
 
         void mouseDownEventHandler(SDL_Event& event) {
@@ -328,7 +316,7 @@ class ConwayApp : public SDLApp {
                     break;
                 
                 case SDLK_R:
-                    for(int i = 0; i < cellCount; i++) {cells[i] = (rand()%2 > 0); }
+                    for(int i = 0; i < cellCount; i++) { cells[i] = (rand()%3 < 1); }
                     calculateCount();
                     focusCellX = -1;
                     focusCellY = -1;
