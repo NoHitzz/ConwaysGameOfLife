@@ -16,7 +16,7 @@
 
 class ConwayApp : public SDLApp {
     private: 
-        TTF_Font* fontSans = nullptr; 
+        const int minWindowSize = 256;
 
         const int gameSize = 500;
         const int cellCount;
@@ -25,15 +25,20 @@ class ConwayApp : public SDLApp {
         int offsetX;
         int offsetY;
         
+        const uint8_t cellMaskAlive = 0x01;
+        const uint8_t cellMaskCount = 0x1E;
+        
+        const Uint32 cellColorAlive = 0xFFFFFFFF;
+        const Uint32 cellColorDead = 0xFF000000;
+
+        uint8_t* cells;
+        uint8_t* swap;
+
+        TTF_Font* fontSans = nullptr; 
         bool withTextRendering;
         int textCutoff = 200;
         int fontSize;
         
-        const uint8_t cellMaskAlive = 0x01;
-        const uint8_t cellMaskCount = 0x1E;
-        uint8_t* cells;
-        uint8_t* swap;
-
         Texture numbers;
         int numWidth;
         int numHeight;
@@ -62,10 +67,11 @@ class ConwayApp : public SDLApp {
             helpTexture.setRenderer(renderer);
             helpTexture.loadText(helpText, monoFont, {200, 200, 200});
             minOffset += helpTexture.getHeight();
+            int gameWindowSize = (int)((gameSize+2*minOffset)/windowScreenRatio);
+            int minHelpTextSize = (int)((2*helpTextOffset + helpTexture.getWidth())/windowScreenRatio);
             SDL_SetWindowMinimumSize(window, 
-                    std::max((gameSize+2*minOffset)/windowScreenRatio, 
-                        (2*helpTextOffset + helpTexture.getWidth())/windowScreenRatio), 
-                    (gameSize+2*minOffset)/windowScreenRatio);
+                    std::max( std::max(gameWindowSize, minWindowSize), minHelpTextSize ), 
+                    std::max(gameWindowSize, minWindowSize));
 
             cells = new uint8_t[cellCount];
             swap = new uint8_t[cellCount];
@@ -78,7 +84,6 @@ class ConwayApp : public SDLApp {
             gameTexture.loadBlank(gameSize, gameSize, 
                     SDL_TEXTUREACCESS_STREAMING, SDL_PIXELFORMAT_RGBA8888);
             SDL_SetTextureScaleMode(gameTexture.getTexture(), SDL_SCALEMODE_NEAREST);
-            
             
             for(int i = 0; i < cellCount; i++) { cells[i] = (rand()%3 < 1); }
 
@@ -159,14 +164,16 @@ class ConwayApp : public SDLApp {
                     int right = (x+1 >= gameSize ? 0 : x+1);
                     int up = (y-1 < 0 ? gameSize-1 : y-1);
                     int down = (y+1 >= gameSize ? 0 : y+1);
-
-                    SDL_Point neighbours[] = {
-                        {left, up}, {x, up}, {right, up}, {left, y}, 
-                        {right,y}, {left, down}, {x, down}, {right, down}};
+                    
                     int aliveNeighb = 0;
-                    for(int i = 0; i < std::size(neighbours); i++) {
-                        aliveNeighb += cells[neighbours[i].x + neighbours[i].y * gameSize] & cellMaskAlive;
-                    }
+                    aliveNeighb += cells[left  + up   * gameSize] & cellMaskAlive;
+                    aliveNeighb += cells[x     + up   * gameSize] & cellMaskAlive;
+                    aliveNeighb += cells[right + up   * gameSize] & cellMaskAlive;
+                    aliveNeighb += cells[left  + y    * gameSize] & cellMaskAlive;
+                    aliveNeighb += cells[right + y    * gameSize] & cellMaskAlive;
+                    aliveNeighb += cells[left  + down * gameSize] & cellMaskAlive;
+                    aliveNeighb += cells[x     + down * gameSize] & cellMaskAlive;
+                    aliveNeighb += cells[right + down * gameSize] & cellMaskAlive;
 
                     cells[x + y * gameSize] = (aliveNeighb << 1) | (cells[x + y * gameSize] & cellMaskAlive);
                 }
@@ -212,7 +219,7 @@ class ConwayApp : public SDLApp {
             bool alive = cells[idx] & cellMaskAlive;
             
             Uint32* pixels = (Uint32*) (gameSurface->pixels);
-            pixels[x + y * (gameSurface->pitch/4)] = (alive ?  0xFFFFFFFF : 0xFF000000);
+            pixels[x + y * (gameSurface->pitch/4)] = (alive ?  cellColorAlive : cellColorDead);
         }
 
         void renderCellTextToTexture(int x, int y) {
@@ -241,8 +248,11 @@ class ConwayApp : public SDLApp {
             int up = (y-1 < 0 ? gameSize-1 : y-1);
             int down = (y+1 >= gameSize ? 0 : y+1);
 
-            SDL_Point neighbours[] = { {left, up}, {x, up}, {right, up}, 
-                {left, y}, {right,y}, {left, down}, {x, down}, {right, down}};
+            SDL_Point neighbours[] = { 
+                {left, up}, {x, up}, {right, up}, 
+                {left, y}, {right,y}, 
+                {left, down}, {x, down}, {right, down}
+            };
 
             SDL_FRect point = {
                 (float)(offsetX + x * pointSize), 
