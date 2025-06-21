@@ -19,6 +19,10 @@ Dependencies
 
 Controls
 --------------------
-- SPACE: Pause/Continue
-- left mouse button: inspect cell
 - r: Reset
+- c: Clear
+- d: enter/exit draw mode
+- left mouse button: inspect/draw
+- SPACE: Pause/Continue
+- right arrow: advance one step
+- ESC: leave mode
