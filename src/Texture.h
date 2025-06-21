@@ -235,6 +235,7 @@ class Texture {
         int getHeight() { return m_height; }
 
         SDL_Texture* getTexture() { return m_texture; }
+        SDL_PixelFormat getFormat() { return m_texture->format; }
 
     private:
         void error(std::string msg, std::string detail = "") {

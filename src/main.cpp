@@ -10,7 +10,7 @@
 
 
 int main (int argc, char *argv[]) {
-    int size = 300;
+    int size = 100;
     if(argc >= 2) {
         std::cout << "Size set to: " + std::string(argv[1]) << "\n";
         size = std::stoi(std::string(argv[1]));

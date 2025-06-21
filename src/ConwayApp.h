@@ -9,7 +9,6 @@
 #define CONWAYAPP_H
 
 #include <SDL3_ttf/SDL_ttf.h>
-#include <bitset>
 #include <iterator>
 #include <string>
 
@@ -19,20 +18,25 @@ class ConwayApp : public SDLApp {
     private: 
         TTF_Font* fontSans = nullptr; 
 
-        static const int minOffset = 100;
+        static const int minOffset = 24;
         const int gameSize = 500;
         const int cellCount;
         int pointSize; 
-        int fontSize;
         int offsetX;
         int offsetY;
-
+        
+        bool withTextRendering;
+        int textCutoff = 200;
+        int fontSize;
+        
         const uint8_t cellMaskAlive = 0x01;
         const uint8_t cellMaskCount = 0x1E;
         uint8_t* cells;
         uint8_t* swap;
 
-        Texture* numbers = nullptr;
+        Texture numbers;
+        int numWidth;
+        int numHeight;
 
         int mousePosX = 0;
         int mousePosY = 0;
@@ -40,75 +44,96 @@ class ConwayApp : public SDLApp {
         bool paused = true;
         int focusCellX = -1;
         int focusCellY = -1;
-
-        int frame = 0;
         int advance = 0;
 
-        SDL_Surface* surface;
-        Texture tex;
+        SDL_Surface* gameSurface;
+        Texture gameTexture;
 
     public:
-        ConwayApp(int size) : SDLApp("Conway", 640, 480), gameSize(size), cellCount(gameSize*gameSize) { 
+        ConwayApp(int size) : SDLApp("Conway", 640,  480), gameSize(size), cellCount(gameSize*gameSize) { 
+            withTextRendering = (gameSize < textCutoff);
+            SDL_SetWindowMinimumSize(window, (gameSize/2)+minOffset, (gameSize/2)+minOffset);
+
             cells = new uint8_t[cellCount];
             swap = new uint8_t[cellCount];
 
-            surface = SDL_CreateSurface(gameSize, gameSize, SDL_PIXELFORMAT_XRGB8888);
-            if(surface == nullptr)
+            gameSurface = SDL_CreateSurface(gameSize, gameSize, SDL_PIXELFORMAT_XRGB8888);
+            if(gameSurface == nullptr)
                 std::cerr << SDL_GetError() << "\n";
             
-            tex.setRenderer(renderer);
-            tex.loadBlank(gameSize, gameSize, SDL_TEXTUREACCESS_STREAMING, SDL_PIXELFORMAT_RGBA8888);
+            gameTexture.setRenderer(renderer);
+            gameTexture.loadBlank(gameSize, gameSize, SDL_TEXTUREACCESS_STREAMING, SDL_PIXELFORMAT_RGBA8888);
+            SDL_SetTextureScaleMode(gameTexture.getTexture(), SDL_SCALEMODE_NEAREST);
+            
 
-            // for(int i = 0; i < cellCount; i++) { cells[i] = (rand()%2 > 0 ? 0x01 : 0x00); }
-            for(int i = 0; i < cellCount; i++) { cells[i] = 0x00; }
+            for(int i = 0; i < cellCount; i++) { cells[i] = (rand()%3 < 1); }
             calculateCount();
 
+            // for(int i = 0; i < cellCount; i++) { cells[i] = (rand()%2 > 0 ? 0x01 : 0x00); }
+            // for(int i = 0; i < cellCount; i++) { cells[i] = 0x00; }
+            // calculateCount();
+
             // This pattern should become honeycomb
-            int x = gameSize/2.f;
-            int y = gameSize/2.f;
-            cells[x + gameSize*y] = 0x01;
-            cells[x+1 + gameSize*(y+1)] = 0x01;
-            cells[x+2 + gameSize*(y+1)] = 0x01;
-            cells[x+1 + gameSize*(y+2)] = 0x01;
+            // int x = gameSize/2.f;
+            // int y = gameSize/2.f;
+            // cells[x + gameSize*y] = 0x01;
+            // cells[x+1 + gameSize*(y+1)] = 0x01;
+            // cells[x+2 + gameSize*(y+1)] = 0x01;
+            // cells[x+1 + gameSize*(y+2)] = 0x01;
 
             windowResized();
         }
 
         ~ConwayApp() { 
             TTF_CloseFont(fontSans);
-            SDL_DestroySurface(surface);
-            delete[] numbers;
+            SDL_DestroySurface(gameSurface);
             delete[] cells;
             delete[] swap;
         }
 
         void windowResized() {
             SDL_GetRenderOutputSize(renderer, &screenWidth, &screenHeight);
-            int size = (screenHeight < screenWidth ? screenHeight : screenWidth);
+            int size = std::min(screenHeight, screenWidth);
             pointSize = (size-2*minOffset)/gameSize; 
+            
             fontSize = pointSize;
             offsetX = std::max((screenWidth-gameSize*pointSize)/2.f, 0.f);
             offsetY = std::max((screenHeight-gameSize*pointSize)/2.f, 0.f);
+
+            if(!withTextRendering)
+                return;
 
             if(fontSans != nullptr) {
                 TTF_CloseFont(fontSans);
                 fontSans = nullptr;
             }
             
-            if(numbers != nullptr) {
-                delete[] numbers;
-                numbers = nullptr;
-            }
-
             fontSans = TTF_OpenFont("/Users/noahhitz/Documents/Projects/chip8-emulator/resources/OpenSans-Regular.ttf", fontSize);
             if(fontSans == nullptr) 
                 error("SDL Font creation failed", SDL_GetError());
 
-            numbers = new Texture[9]();
+            numWidth = 0;
+            numHeight = 0;
+            Texture* nums = new Texture[9]();
             for(int i = 0; i < 9; i++) {
-                    numbers[i].setRenderer(renderer);
-                    numbers[i].loadText(std::to_string(i), fontSans, {0,0,255});
+                    nums[i].setRenderer(renderer);
+                    nums[i].loadText(std::to_string(i), fontSans, {0,0,255});
+                    numWidth = std::max(numWidth, nums[i].getWidth());
+                    numHeight = std::max(numHeight, nums[i].getHeight());
             }
+            
+            numbers.setRenderer(renderer);
+            numbers.loadBlank(numWidth*3, numHeight*3, SDL_TEXTUREACCESS_TARGET, nums->getFormat());
+            numbers.setAsRenderTarget();
+            for(int i = 0; i < 9; i++) {
+                int x = (numWidth-nums[i].getWidth())/2;
+                int y = (numHeight-nums[i].getHeight())/2;
+                SDL_FRect dest = {(float)((i%3)*numWidth + x), (float)((i/3)*numHeight + y), 
+                    (float)nums[i].getWidth(), (float)nums[i].getHeight()};
+                nums[i].render(dest.x, dest.y);
+            }
+            SDL_SetRenderTarget(renderer, nullptr);
+            delete[] nums;
         }
         
         // Any live cell with fewer than two live neighbours dies, as if by underpopulation.
@@ -139,7 +164,6 @@ class ConwayApp : public SDLApp {
 
             bool alive = cells[idx] & cellMaskAlive;
             int aliveNeighb = (cells[idx] & cellMaskCount) >> 1;
-            // std::cout << alive << ", " << aliveNeighb << ": ";
             int diff = 0;
             if(alive && aliveNeighb >= 2 && aliveNeighb <= 3) {
                 swap[idx] = (cells[idx] & cellMaskCount) | cellMaskAlive;
@@ -178,8 +202,6 @@ class ConwayApp : public SDLApp {
                 advance--;
             }
 
-            // TODO: Remove if you do the thing below...
-            calculateCount();
 
             for(int y = 0; y < gameSize; y++) {
                 for(int x = 0; x < gameSize; x++) {
@@ -207,26 +229,20 @@ class ConwayApp : public SDLApp {
             int idx = x + y * gameSize;
             bool alive = cells[idx] & cellMaskAlive;
             
-            Uint32* pixels = (Uint32*) (surface->pixels);
-            pixels[x + y * (surface->pitch/4)] = (alive ?  0xFFFFFFFF : 0xFF000000);
-
-            // TODO: REMOVE THIS 
-            // if(!alive)
-                // return;
-            // SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-            // SDL_FRect rect = {(float) offsetX + x * pointSize, (float) offsetY + y * pointSize, (float) pointSize, (float) pointSize};
-            // SDL_RenderFillRect(renderer, &rect);
+            Uint32* pixels = (Uint32*) (gameSurface->pixels);
+            pixels[x + y * (gameSurface->pitch/4)] = (alive ?  0xFFFFFFFF : 0xFF000000);
         }
 
         void renderCellText(int x, int y) {
-            // if(gameSize > 150)
-                // return;
+            if(!withTextRendering)
+                return;
             int count = (cellMaskCount & cells[x + y*gameSize]) >> 1;
             SDL_FRect point = {(float)(offsetX + x * pointSize), (float)(offsetY + y * pointSize), (float)pointSize, (float)pointSize};
-            Texture* text = &numbers[count];
-            SDL_FRect textRect = {point.x + (pointSize - text->getWidth())/2.f, point.y + (pointSize-text->getHeight())/2.f, 
-                (float)text->getWidth(), (float)text->getHeight()};
-            text->render(textRect.x, textRect.y);
+            SDL_FRect clip = {(float)((count%3)*numWidth), (float)((int)(count/3)*numHeight), 
+                (float)numWidth, (float)numHeight};
+            SDL_FRect textRect = {point.x + (pointSize - numWidth)/2.f, point.y + (pointSize-numHeight)/2.f, 
+                (float)numWidth, (float)numHeight};
+            numbers.render(textRect.x, textRect.y, &clip);
         }
 
         void focus() {
@@ -270,27 +286,15 @@ class ConwayApp : public SDLApp {
             SDL_RenderFillRect(renderer, &r);
         }
 
-        int once = true;
         void render() {
-            tex.update(surface);
-            SDL_SetTextureScaleMode(tex.getTexture(), SDL_SCALEMODE_NEAREST);
-            tex.render(offsetX, offsetY, gameSize*pointSize, gameSize*pointSize);
-                        
-            if(false) {
-            for(int i = 0; i < gameSize*gameSize; i++) { 
-                if(i % gameSize == 0 )
-                    std::cout << "\n";
-                std::bitset<8> bits(((uint32_t*) (surface->pixels))[i]);
-                std::cout << bits << ", ";
-                // std::cout << ((uint8_t*) (surf->pixels))[i] << ", ";
-            }
-            std::cout << "\n";
-            }
-            once = false;
-            if(advance == 1)
-                once = true;
+            // TODO: Remove if you decide to combine update with count calculation
+            calculateCount();
+
+            gameTexture.update(gameSurface);
+            gameTexture.render(offsetX, offsetY, gameSize*pointSize, gameSize*pointSize);
 
             update(); 
+
             if(focusCellX != -1 && focusCellY != -1)
                 focus();
             
@@ -300,8 +304,6 @@ class ConwayApp : public SDLApp {
                     (screenWidth)/2.0, 20, screenWidth/2.0-40, screenHeight-40); 
             renderDebugRect("mid", 
                     20, screenHeight/2.0, screenWidth-40, screenHeight/2.0-40); 
-
-            frame++;
         }
 
         void mouseDownEventHandler(SDL_Event& event) {
