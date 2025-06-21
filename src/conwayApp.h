@@ -29,7 +29,7 @@ class ConwayApp : public SDLApp {
         const uint8_t cellMaskCount = 0x1E;
         
         const Uint32 cellColorAlive = 0xFFFFFFFF;
-        const Uint32 cellColorDead = 0xFF000000;
+        const Uint32 cellColorDead = 0x00000000;
 
         uint8_t* cells;
         uint8_t* swap;
@@ -45,8 +45,12 @@ class ConwayApp : public SDLApp {
 
         int mousePosX = 0;
         int mousePosY = 0;
+        int lastMouseCellX = -1;
+        int lastMouseCellY = -1;
+        bool mouseLeftDown = false;
 
         bool paused = true;
+        bool drawMode = false;
         int focusCellX = -1;
         int focusCellY = -1;
         int advance = 0;
@@ -57,7 +61,7 @@ class ConwayApp : public SDLApp {
         int helpTextOffset = 8;
 
         std::string helpText = 
-            "r: reset, space: pause/continue, left mouse button: inspect cell";
+            "r: reset, c: clear, d: draw, space: pause/continue, right arrow: step";
 
     public:
         ConwayApp(int size) 
@@ -85,7 +89,7 @@ class ConwayApp : public SDLApp {
                     SDL_TEXTUREACCESS_STREAMING, SDL_PIXELFORMAT_RGBA8888);
             SDL_SetTextureScaleMode(gameTexture.getTexture(), SDL_SCALEMODE_NEAREST);
             
-            for(int i = 0; i < cellCount; i++) { cells[i] = (rand()%3 < 1); }
+            initGolRandom();
 
             // Test pattern: honeycomb
             // for(int i = 0; i < cellCount; i++) { cells[i] = 0x00; }
@@ -96,8 +100,6 @@ class ConwayApp : public SDLApp {
             // cells[x+2 + gameSize*(y+1)] = 0x01;
             // cells[x+1 + gameSize*(y+2)] = 0x01;
             
-            calculateCount();
-
             windowResized();
         }
 
@@ -152,28 +154,55 @@ class ConwayApp : public SDLApp {
             SDL_SetRenderTarget(renderer, nullptr);
             delete[] nums;
         }
+
+        void initGolRandom() {
+            for(int i = 0; i < cellCount; i++) { cells[i] = (rand()%3 < 1); }
+        }
+        
+        void initClear() {
+            for(int i = 0; i < cellCount; i++) { cells[i] = 0x00; }
+        }
         
         // Any live cell with fewer than two live neighbours dies, as if by underpopulation.
         // Any live cell with two or three live neighbours lives on to the next generation.
         // Any live cell with more than three live neighbours dies, as if by overpopulation.
         // Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
-        void calculateCount() {
+        void calculateCount(int x, int y) {
+            int n = (y-1 < 0 ? gameSize-1 : y-1);
+            int e = (x+1 >= gameSize ? 0 : x+1);
+            int s = (y+1 >= gameSize ? 0 : y+1);
+            int w = (x-1 < 0 ? gameSize-1 : x-1);
+
+            int aliveNeighb = 0;
+            aliveNeighb += cells[w + n * gameSize] & cellMaskAlive;
+            aliveNeighb += cells[x + n * gameSize] & cellMaskAlive;
+            aliveNeighb += cells[e + n * gameSize] & cellMaskAlive;
+            aliveNeighb += cells[w + y * gameSize] & cellMaskAlive;
+            aliveNeighb += cells[e + y * gameSize] & cellMaskAlive;
+            aliveNeighb += cells[w + s * gameSize] & cellMaskAlive;
+            aliveNeighb += cells[x + s * gameSize] & cellMaskAlive;
+            aliveNeighb += cells[e + s * gameSize] & cellMaskAlive;
+
+            cells[x + y * gameSize] = (aliveNeighb << 1) | (cells[x + y * gameSize] & cellMaskAlive);
+        }
+
+        void calculateCountAll() {
             for(int y = 0; y < gameSize; y++) {
                 for(int x = 0; x < gameSize; x++) {
-                    int left = (x-1 < 0 ? gameSize-1 : x-1);
-                    int right = (x+1 >= gameSize ? 0 : x+1);
-                    int up = (y-1 < 0 ? gameSize-1 : y-1);
-                    int down = (y+1 >= gameSize ? 0 : y+1);
-                    
+                    int n = y-1 < 0 ? gameSize-1 : y-1;
+                    int e = x+1 >= gameSize ? 0 : x+1;
+                    int s = y+1 >= gameSize ? 0 : y+1;
+                    int w = x-1 < 0 ? gameSize-1 : x-1;
+
                     int aliveNeighb = 0;
-                    aliveNeighb += cells[left  + up   * gameSize] & cellMaskAlive;
-                    aliveNeighb += cells[x     + up   * gameSize] & cellMaskAlive;
-                    aliveNeighb += cells[right + up   * gameSize] & cellMaskAlive;
-                    aliveNeighb += cells[left  + y    * gameSize] & cellMaskAlive;
-                    aliveNeighb += cells[right + y    * gameSize] & cellMaskAlive;
-                    aliveNeighb += cells[left  + down * gameSize] & cellMaskAlive;
-                    aliveNeighb += cells[x     + down * gameSize] & cellMaskAlive;
-                    aliveNeighb += cells[right + down * gameSize] & cellMaskAlive;
+                    aliveNeighb += cells[w + n * gameSize] & cellMaskAlive;
+                    aliveNeighb += cells[x + n * gameSize] & cellMaskAlive;
+                    aliveNeighb += cells[e + n * gameSize] & cellMaskAlive;
+                    aliveNeighb += cells[w + y * gameSize] & cellMaskAlive;
+                    aliveNeighb += cells[e + y * gameSize] & cellMaskAlive;
+                    aliveNeighb += cells[w + s * gameSize] & cellMaskAlive;
+                    aliveNeighb += cells[x + s * gameSize] & cellMaskAlive;
+                    aliveNeighb += cells[e + s * gameSize] & cellMaskAlive;
 
                     cells[x + y * gameSize] = (aliveNeighb << 1) | (cells[x + y * gameSize] & cellMaskAlive);
                 }
@@ -197,9 +226,8 @@ class ConwayApp : public SDLApp {
         void update() {
             for(int y = 0; y < gameSize; y++) {
                 for(int x = 0; x < gameSize; x++) {
-                    if(!paused || advance > 0) {
+                    if(!paused || advance > 0) 
                         updateCellState(x, y);
-                    }
 
                     renderCellToTexture(x,y);
                 }
@@ -215,9 +243,7 @@ class ConwayApp : public SDLApp {
         }
 
         void renderCellToTexture(int x, int y) {
-            int idx = x + y * gameSize;
-            bool alive = cells[idx] & cellMaskAlive;
-            
+            bool alive = (cells[x + y * gameSize] & cellMaskAlive);
             Uint32* pixels = (Uint32*) (gameSurface->pixels);
             pixels[x + y * (gameSurface->pitch/4)] = (alive ?  cellColorAlive : cellColorDead);
         }
@@ -243,15 +269,15 @@ class ConwayApp : public SDLApp {
             int x = focusCellX % gameSize;
             int y = focusCellY % gameSize;
 
-            int left = (x-1 < 0 ? gameSize-1 : x-1);
-            int right = (x+1 >= gameSize ? 0 : x+1);
-            int up = (y-1 < 0 ? gameSize-1 : y-1);
-            int down = (y+1 >= gameSize ? 0 : y+1);
+            int n = (y-1 < 0 ? gameSize-1 : y-1);
+            int e = (x+1 >= gameSize ? 0 : x+1);
+            int s = (y+1 >= gameSize ? 0 : y+1);
+            int w = (x-1 < 0 ? gameSize-1 : x-1);
 
-            SDL_Point neighbours[] = { 
-                {left, up}, {x, up}, {right, up}, 
-                {left, y}, {right,y}, 
-                {left, down}, {x, down}, {right, down}
+            const SDL_Point neighbours[] = { 
+                {w, n}, {x, n}, {e, n}, 
+                {w, y}, {e,y}, 
+                {w, s}, {x, s}, {e, s}
             };
 
             SDL_FRect point = {
@@ -277,8 +303,7 @@ class ConwayApp : public SDLApp {
         }
 
         void render() {
-            calculateCount();
-            
+            calculateCountAll();
             update(); 
             gameTexture.update(gameSurface);
             gameTexture.render(offsetX, offsetY, gameSize*pointSize, gameSize*pointSize);
@@ -305,36 +330,83 @@ class ConwayApp : public SDLApp {
         }
 
         void mouseDownEventHandler(SDL_Event& event) {
-            focusCellX = (mousePosX-offsetX)/pointSize;
-            focusCellY = (mousePosY-offsetY)/pointSize;
+            mouseLeftDown = true;
+            lastMouseCellX = -1;
+            lastMouseCellY = -1;
+            mouseInteraction();
+        }
+        
+        void mouseUpEventHandler(SDL_Event& event) { 
+            mouseLeftDown = false;
+        }
+
+        void mouseInteraction() {
+            if(mousePosX < offsetX || mousePosX >= offsetX + gameSize*pointSize ||
+                    mousePosY < offsetY || mousePosY >= offsetY + gameSize*pointSize) {
+                focusCellX = -1;
+                focusCellY = -1;
+                drawMode = false;
+                return;
+            }
+
+            int x = (mousePosX-offsetX)/pointSize;
+            int y = (mousePosY-offsetY)/pointSize;
+
+            if(x == lastMouseCellX && y == lastMouseCellY)
+                return;
+           
+            if(drawMode) {
+                int idx = x + y * gameSize;
+                cells[idx] = (cells[idx] & cellMaskCount) | (~cells[idx] & cellMaskAlive);
+            } else {
+                focusCellX = x;
+                focusCellY = y;
+            }
+
+            lastMouseCellX = x;
+            lastMouseCellY = y;
         }
 
         void mouseMoveEventHandler(SDL_Event& event) {
-            int width, height;
-            SDL_GetWindowSize(window, &width, &height);
-            mousePosX = event.motion.x * screenWidth/width;
-            mousePosY = event.motion.y* screenHeight/height;
-
+            mousePosX = event.motion.x * windowScreenRatio;
+            mousePosY = event.motion.y* windowScreenRatio;
+            
+            if(mouseLeftDown)
+                mouseInteraction();
         }
 
         void keyDownEventHandler(SDL_Event& event) {
             switch(event.key.key) {
                 case SDLK_SPACE:
+                    drawMode = false;
                     paused = !paused;
                     focusCellX = -1;
                     focusCellY = -1;
                     break;
                 
                 case SDLK_R:
-                    for(int i = 0; i < cellCount; i++) { cells[i] = (rand()%3 < 1); }
-                    calculateCount();
+                    initGolRandom();
                     focusCellX = -1;
                     focusCellY = -1;
                     break;
 
-                case SDLK_C:
+                case SDLK_ESCAPE:
                     focusCellX = -1;
                     focusCellY = -1;
+                    drawMode = false;
+                    break;
+
+                case SDLK_C:
+                    initClear();
+                    break;
+
+                case SDLK_D:
+                    drawMode = !drawMode;
+                    paused = true;
+                    focusCellX = -1;
+                    focusCellY = -1;
+                    lastMouseCellX = -1;
+                    lastMouseCellY = -1;
                     break;
 
                 case SDLK_UP:
@@ -347,6 +419,7 @@ class ConwayApp : public SDLApp {
                     break;
 
                 case SDLK_RIGHT:
+                    paused = true;
                     advance++;
                     focusCellX = -1;
                     focusCellY = -1;
