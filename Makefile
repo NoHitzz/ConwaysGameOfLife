@@ -5,7 +5,7 @@
 # Noah Hitz 2025
 # 
 
-TARGET := main
+TARGET := conway 
 
 BUILD_DIR := ./build
 SRC_DIRS := ./src
