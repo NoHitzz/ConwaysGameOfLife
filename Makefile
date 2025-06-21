@@ -11,7 +11,7 @@ BUILD_DIR := ./build
 SRC_DIRS := ./src
 
 # Source files
-SRCS = main.cpp chip8.cpp
+SRCS = main.cpp 
 
 # Compiler
 CXX = g++
