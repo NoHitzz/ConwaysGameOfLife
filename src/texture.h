@@ -5,8 +5,8 @@
 // Noah Hitz 2025
 // 
 
-#ifndef MAIN_CPP
-#define MAIN_CPP
+#ifndef TEXTURE_H
+#define TEXTURE_H
 
 #include <SDL3/SDL.h>
 #include <SDL3_ttf/SDL_ttf.h>
@@ -256,4 +256,4 @@ class Texture {
         }
 };
 
-#endif /* MAIN_CPP */
+#endif /* TEXTURE_H */
