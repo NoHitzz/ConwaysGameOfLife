@@ -1,6 +1,6 @@
 // 
-// Timer.h
-// chip8-emulator
+// timer.h
+// ConwaysGameOfLife
 // 
 // Noah Hitz 2025
 // 

@@ -1,13 +1,11 @@
 // 
 // main.cpp
-// chip8-emulator
+// ConwaysGameOfLife
 // 
 // Noah Hitz 2025
 // 
 
-// #include "testApp.h"
-#include "ConwayApp.h"
-
+#include "conwayApp.h"
 
 int main (int argc, char *argv[]) {
     int size = 100;

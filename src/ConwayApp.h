@@ -1,6 +1,6 @@
 // 
-// ConwayApp.h
-// chip8-emulator
+// conwayApp.h
+// ConwaysGameOfLife
 // 
 // Noah Hitz 2025
 // 

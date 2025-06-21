@@ -1,6 +1,6 @@
 // 
-// main.cpp
-// chip8-emulator
+// texture.h
+// ConwaysGameOfLife
 // 
 // Noah Hitz 2025
 // 

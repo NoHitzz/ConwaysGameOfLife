@@ -1,6 +1,6 @@
 // 
-// sdlapp.h
-// chip8-emulator
+// sdl3app.h
+// ConwaysGameOfLife
 // 
 // Noah Hitz 2025
 // 
@@ -19,8 +19,8 @@
 #include <string>
 #include <algorithm>
 
-#include "Timer.h"
-#include "Texture.h"
+#include "timer.h"
+#include "texture.h"
 
 struct DebugRect {
             SDL_Color color;
