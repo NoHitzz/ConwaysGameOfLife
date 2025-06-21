@@ -21,7 +21,7 @@ CXX = g++
 CPPFLAGS = -std=c++20 -O1 -Wall
 INC_FLAGS := -I /usr/local/include
 LIB_FLAGS := -L /usr/local/lib
-LIBS := -lSDL3 -lSDL3_ttf -lSDL3_image
+LIBS := -lSDL3 -lSDL3_ttf 
 
 # Object files
 OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
