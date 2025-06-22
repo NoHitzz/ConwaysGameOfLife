@@ -29,4 +29,4 @@ Controls
 | space             | pause/continue                                  |
 | right arrow       | advance one step                                |
 | esc               | leave mode                                      |
-| ctrl-v            | paste pattern from [life lexicon]{http://www.radicaleye.com/lifepage/lexicon.html} |
+| ctrl-v            | paste pattern from [life lexicon](http://www.radicaleye.com/lifepage/lexicon.html) |
