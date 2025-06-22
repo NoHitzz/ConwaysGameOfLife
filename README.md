@@ -9,7 +9,7 @@ Installation
 --------------------
 - Clone this repo
 - Compile with ```make``` 
-- Run with ```make run``` or  ```./build/conway <size>```
+- Run with ```make run``` or  ```./build/gameOfLife <size>```
 
 
 Dependencies
