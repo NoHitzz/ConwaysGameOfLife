@@ -5,7 +5,7 @@
 # Noah Hitz 2025
 # 
 
-TARGET := conway 
+TARGET := gameOfLife
 
 BUILD_DIR := ./build
 SRC_DIRS := ./src

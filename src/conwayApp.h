@@ -455,7 +455,7 @@ class ConwayApp : public SDLApp {
                     lineLength = line.length();
 
                 if(line.length() != lineLength) {
-                    error("Pasted pattern contains uneven line lengts", patternStr);
+                    error("Pasted pattern contains uneven line lengths");
                     return;
                 }
 
