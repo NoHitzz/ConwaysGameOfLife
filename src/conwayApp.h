@@ -9,7 +9,7 @@
 #define CONWAYAPP_H
 
 #include <SDL3_ttf/SDL_ttf.h>
-#include <iterator>
+#include <cstdint>
 #include <string>
 
 #include "sdl3app.h"
@@ -18,21 +18,24 @@ class ConwayApp : public SDLApp {
     private: 
         const int minWindowSize = 256;
 
-        const int gameSize = 500;
-        const int cellCount;
+        const int gameSize = 0;
+        const int rowLength = 0;
+        const int numRows = 0;
+        const int arrayLength = 0;
         int minOffset = 20;
         int pointSize; 
         int offsetX;
         int offsetY;
         
-        const uint8_t cellMaskAlive = 0x01;
-        const uint8_t cellMaskCount = 0x1E;
+        const uint64_t cellMaskAlive = 0x1;
+        const uint64_t cellMaskCount = 0xF;
         
         const Uint32 cellColorAlive = 0xFFFFFFFF;
         const Uint32 cellColorDead = 0x00000000;
 
-        uint8_t* cells;
-        uint8_t* swap;
+        uint64_t* cells;
+        uint64_t* swap;
+        uint64_t* count;
 
         TTF_Font* fontSans = nullptr; 
         bool withTextRendering;
@@ -64,9 +67,12 @@ class ConwayApp : public SDLApp {
             "r: reset, c: clear, d: draw, space: pause/continue, right arrow: step";
 
     public:
-        ConwayApp(int size) 
-            : SDLApp("Conway's Game of Life", 640,  480), 
-            gameSize(size), cellCount(gameSize*gameSize) { 
+        ConwayApp(uint64_t size) : SDLApp("Conway's Game of Life", 640,  480), 
+        gameSize(std::max(nextPowerOfTwo(size), 16)), 
+        rowLength(gameSize / 16), // Every array entry packs 16 horizontal cells
+        numRows(gameSize),
+        arrayLength(rowLength * numRows) { 
+
             withTextRendering = (gameSize < textCutoff);
             helpTexture.setRenderer(renderer);
             helpTexture.loadText(helpText, monoFont, {200, 200, 200});
@@ -77,8 +83,13 @@ class ConwayApp : public SDLApp {
                     std::max( std::max(gameWindowSize, minWindowSize), minHelpTextSize ), 
                     std::max(gameWindowSize, minWindowSize));
 
-            cells = new uint8_t[cellCount];
-            swap = new uint8_t[cellCount];
+            cells = new uint64_t[arrayLength];
+            swap = new uint64_t[arrayLength];
+            count = new uint64_t[arrayLength];
+            std::cout << "requesteSize: " << size << ", gameSize: " << gameSize 
+                << ", packedLength: (" << rowLength << ", " << numRows 
+                << "), arrayLength: " << arrayLength 
+                << ", actualLength: " << "??" << "\n";
 
             gameSurface = SDL_CreateSurface(gameSize, gameSize, SDL_PIXELFORMAT_XRGB8888);
             if(gameSurface == nullptr)
@@ -90,16 +101,7 @@ class ConwayApp : public SDLApp {
             SDL_SetTextureScaleMode(gameTexture.getTexture(), SDL_SCALEMODE_NEAREST);
             
             initGolRandom();
-
-            // Test pattern: honeycomb
-            // for(int i = 0; i < cellCount; i++) { cells[i] = 0x00; }
-            // int x = gameSize/2.f;
-            // int y = gameSize/2.f;
-            // cells[x + gameSize*y] = 0x01;
-            // cells[x+1 + gameSize*(y+1)] = 0x01;
-            // cells[x+2 + gameSize*(y+1)] = 0x01;
-            // cells[x+1 + gameSize*(y+2)] = 0x01;
-            
+                        
             windowResized();
         }
 
@@ -108,12 +110,13 @@ class ConwayApp : public SDLApp {
             SDL_DestroySurface(gameSurface);
             delete[] cells;
             delete[] swap;
+            delete[] count;
         }
 
         void windowResized() {
             SDL_GetRenderOutputSize(renderer, &screenWidth, &screenHeight);
             int size = std::min(screenHeight, screenWidth);
-            pointSize = (size-2*minOffset)/gameSize; 
+            pointSize = std::max((size-2*minOffset)/gameSize, 1);  //TODO: ?? does this max make sense?
             
             fontSize = pointSize;
             offsetX = std::max((screenWidth-gameSize*pointSize)/2.f, 0.f);
@@ -126,7 +129,7 @@ class ConwayApp : public SDLApp {
                 TTF_CloseFont(fontSans);
                 fontSans = nullptr;
             }
-            
+
             fontSans = TTF_OpenFont((getBasePath() + "../resources/OpenSans-Regular.ttf").c_str(), fontSize);
             if(fontSans == nullptr) 
                 error("SDL Font creation failed", SDL_GetError());
@@ -140,7 +143,7 @@ class ConwayApp : public SDLApp {
                     numWidth = std::max(numWidth, nums[i].getWidth());
                     numHeight = std::max(numHeight, nums[i].getHeight());
             }
-            
+
             numbers.setRenderer(renderer);
             numbers.loadBlank(numWidth*3, numHeight*3, SDL_TEXTUREACCESS_TARGET, nums->getFormat());
             numbers.setAsRenderTarget();
@@ -155,140 +158,195 @@ class ConwayApp : public SDLApp {
             delete[] nums;
         }
 
+        void initGolPattern(int patternId = 1) {
+            uint32_t patterns8x8[][8*8] = {
+                {
+                 0x00000000,
+                 0x00000000,
+                 0x00100000,
+                 0x00011000,
+                 0x00010000,
+                 0x00000000,
+                 0x00000000,
+                 0x00000000
+                },
+                { // r-pentomino
+                 0x00000001,
+                 0x00000000,
+                 0x00011000,
+                 0x00110000,
+                 0x00010000,
+                 0x00000000,
+                 0x00000000,
+                 0x10000000
+                },
+                {
+                 0x10000001,
+                 0x01000000,
+                 0x00100000,
+                 0x00010000,
+                 0x00001000,
+                 0x00000100,
+                 0x00000010,
+                 0x10000001
+                }
+            };
+
+            initGolClear();
+
+            int offset = (numRows-8)/2;
+            int xPos = (rowLength)/2;
+            int idx = 0;
+            for(int y = offset; y < numRows-offset; y++) {
+                cells[xPos + y * rowLength] = ((uint64_t) patterns8x8[patternId][idx++]) << 4*4;
+            }
+        }
+
+        void debugCellArray() {
+            assert(arrayLength <= 512);
+            std::cout << "Full cell Array: \n";
+            for(int y = 0; y < numRows; y++) {
+                for(int x = 0; x < rowLength; x++) {
+                    std::cout << std::dec << x + y*rowLength << ": " 
+                        << std::hex << cells[x + y * rowLength] 
+                        << std::dec << (x != rowLength-1 ? ", " : "\n"); 
+                }
+            }
+            std::cout << "\n";
+        }
+
         void initGolRandom() {
-            for(int i = 0; i < cellCount; i++) { cells[i] = (rand()%3 < 1); }
-        }
-        
-        void initClear() {
-            for(int i = 0; i < cellCount; i++) { cells[i] = 0x00; }
-        }
-        
-        // Any live cell with fewer than two live neighbours dies, as if by underpopulation.
-        // Any live cell with two or three live neighbours lives on to the next generation.
-        // Any live cell with more than three live neighbours dies, as if by overpopulation.
-        // Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
-        void calculateCount(int x, int y) {
-            int n = (y-1 < 0 ? gameSize-1 : y-1);
-            int e = (x+1 >= gameSize ? 0 : x+1);
-            int s = (y+1 >= gameSize ? 0 : y+1);
-            int w = (x-1 < 0 ? gameSize-1 : x-1);
-
-            int aliveNeighb = 0;
-            aliveNeighb += cells[w + n * gameSize] & cellMaskAlive;
-            aliveNeighb += cells[x + n * gameSize] & cellMaskAlive;
-            aliveNeighb += cells[e + n * gameSize] & cellMaskAlive;
-            aliveNeighb += cells[w + y * gameSize] & cellMaskAlive;
-            aliveNeighb += cells[e + y * gameSize] & cellMaskAlive;
-            aliveNeighb += cells[w + s * gameSize] & cellMaskAlive;
-            aliveNeighb += cells[x + s * gameSize] & cellMaskAlive;
-            aliveNeighb += cells[e + s * gameSize] & cellMaskAlive;
-
-            cells[x + y * gameSize] = (aliveNeighb << 1) | (cells[x + y * gameSize] & cellMaskAlive);
-        }
-
-        void calculateCountAll() {
-            for(int y = 0; y < gameSize; y++) {
-                for(int x = 0; x < gameSize; x++) {
-                    int n = y-1 < 0 ? gameSize-1 : y-1;
-                    int e = x+1 >= gameSize ? 0 : x+1;
-                    int s = y+1 >= gameSize ? 0 : y+1;
-                    int w = x-1 < 0 ? gameSize-1 : x-1;
-
-                    int aliveNeighb = 0;
-                    aliveNeighb += cells[w + n * gameSize] & cellMaskAlive;
-                    aliveNeighb += cells[x + n * gameSize] & cellMaskAlive;
-                    aliveNeighb += cells[e + n * gameSize] & cellMaskAlive;
-                    aliveNeighb += cells[w + y * gameSize] & cellMaskAlive;
-                    aliveNeighb += cells[e + y * gameSize] & cellMaskAlive;
-                    aliveNeighb += cells[w + s * gameSize] & cellMaskAlive;
-                    aliveNeighb += cells[x + s * gameSize] & cellMaskAlive;
-                    aliveNeighb += cells[e + s * gameSize] & cellMaskAlive;
-
-                    cells[x + y * gameSize] = (aliveNeighb << 1) | (cells[x + y * gameSize] & cellMaskAlive);
+            initGolClear();
+            for(int i = 0; i < arrayLength; i++) { 
+                for(int j = 0; j < 16; j++)  {
+                    cells[i] |= (cellMaskAlive & (rand() % 3 < 1)) << (j*4); 
                 }
             }
         }
+        
+        void initGolClear() {
+            for(int i = 0; i < arrayLength; i++) { cells[i] = 0x0; }
+        }
 
-        void updateCellState(int x, int y) {
-            int idx = x + y * gameSize;
-
-            bool alive = cells[idx] & cellMaskAlive;
-            int aliveNeighb = (cells[idx] & cellMaskCount) >> 1;
-            if(alive && aliveNeighb >= 2 && aliveNeighb <= 3) {
-                swap[idx] = (cells[idx] & cellMaskCount) | cellMaskAlive;
-            } else if(!alive && aliveNeighb == 3) {
-                swap[idx] = (cells[idx] & cellMaskAlive) | cellMaskAlive;
-            } else {
-                swap[idx] &= (cells[idx] & cellMaskCount);
+        void initGolFull() {
+            for(int i = 0; i < arrayLength; i++) { 
+                cells[i] = 0x1111111111111111;
             }
         }
 
-        void update() {
-            for(int y = 0; y < gameSize; y++) {
-                for(int x = 0; x < gameSize; x++) {
-                    if(!paused || advance > 0) 
-                        updateCellState(x, y);
+        /*
+         * More information about this algorithm, see section 2.4 of:
+         * https://www.gathering4gardner.org/g4g13gift/math/RokickiTomas-GiftExchange-LifeAlgorithms-G4G13.pdf  
+         * */
+        void nextBlockState(int x, int y) {
+            int nC = (x + 1) >= rowLength ?           0 : x+1;
+            int pC = (x - 1) <          0 ? rowLength-1 : x-1;
+            int nR = (y + 1) >= numRows   ?           0 : y+1;
+            int pR = (y - 1) <          0 ?   numRows-1 : y-1;
 
-                    renderCellToTexture(x,y);
+            uint64_t c = cells[x + y * rowLength];
+
+            uint64_t nw = cells[pC + pR * rowLength];
+            uint64_t n  = cells[x  + pR * rowLength];
+            uint64_t ne = cells[nC + pR * rowLength];
+
+            uint64_t e  = cells[nC + y * rowLength];
+            uint64_t w  = cells[pC + y * rowLength];
+
+            uint64_t sw = cells[pC + nR * rowLength];
+            uint64_t s  = cells[x  + nR * rowLength];
+            uint64_t se = cells[nC + nR * rowLength];
+
+            uint64_t r = (c << 4) + (c >> 4) 
+                + (n  << 4) + n + (n  >> 4)
+                + (s  << 4) + s + (s  >> 4)
+                + (nw << 60)  +   (ne >> 60)
+                + (w  << 60)  +   (e  >> 60)
+                + (sw << 60)  +   (se >> 60);
+
+            count[x + y * rowLength] = r;
+            swap[x + y * rowLength] = (r | c) 
+                & (r >> 1) & ~(r >> 2) & ~(r >> 3) 
+                & 0x1111111111111111;
+        }
+
+        void update() {
+            for(int y = 0; y < numRows; y++) {
+                for(int x = 0; x < rowLength; x++) {
+                    nextBlockState(x, y);
+                    renderBlockToTexture(x,y);
                 }
             }
         }
 
         void renderCellText() {
-            for(int y = 0; y < gameSize; y++) {
-                for(int x = 0; x < gameSize; x++) {
-                    renderCellTextToTexture(x,y);
+            for(int y = 0; y < numRows; y++) {
+                for(int x = 0; x < rowLength; x++) {
+                    renderBlockTextToTexture(x,y);
                 }
             }
         }
 
-        void renderCellToTexture(int x, int y) {
-            bool alive = (cells[x + y * gameSize] & cellMaskAlive);
+        void renderBlockToTexture(int x, int y) {
+            uint64_t c = cells[x + y * rowLength];
+            const int rows = y * (gameSurface->pitch / 4);
             Uint32* pixels = (Uint32*) (gameSurface->pixels);
-            pixels[x + y * (gameSurface->pitch/4)] = (alive ?  cellColorAlive : cellColorDead);
+            
+            // Set pixel color with mask from block (-(0x00...01) = FFFFFFFFFFFFFFFF)
+            for(int i = 0; i < 16; i++) {
+                int s = 4 * ((16-1) - i );
+                pixels[(x*16) + i + rows] = cellColorAlive & -((c & (cellMaskAlive << s)) >> s);
+            }
         }
 
-        void renderCellTextToTexture(int x, int y) {
-            int count = (cellMaskCount & cells[x + y*gameSize]) >> 1;
-            SDL_FRect point = {
-                (float)(offsetX + x * pointSize), 
-                (float)(offsetY + y * pointSize), 
-                (float)pointSize, (float)pointSize};
-            SDL_FRect clip = {
-                (float)((count%3)*numWidth), 
-                (float)((int)(count/3)*numHeight), 
-                (float)numWidth, (float)numHeight};
-            SDL_FRect textRect = {
-                point.x + (pointSize - numWidth)/2.f, 
-                point.y + (pointSize-numHeight)/2.f, 
-                (float)numWidth, (float)numHeight};
-            numbers.render(textRect.x, textRect.y, &clip);
+        void renderBlockTextToTexture(int x, int y) {
+            uint64_t blockCount = count[x + y * rowLength];
+            
+            for(int i = 0; i < 16; i++) {
+                int s = 4 * ((16-1) - i);
+                int c = (blockCount & (cellMaskCount << s)) >> s;
+                
+                int xPos = (x * 16) + i;
+                SDL_FRect point = {
+                    (float)(offsetX + xPos * pointSize), 
+                    (float)(offsetY + y * pointSize), 
+                    (float)pointSize, (float)pointSize};
+                SDL_FRect clip = {
+                    (float)(     (c%3) * numWidth), 
+                    (float)((int)(c/3) * numHeight), 
+                    (float)numWidth, (float)numHeight};
+                SDL_FRect textRect = {
+                    point.x + (pointSize - numWidth)/2.f, 
+                    point.y + (pointSize-numHeight)/2.f, 
+                    (float)numWidth, (float)numHeight};
+                numbers.render(textRect.x, textRect.y, &clip);
+            }
         }
 
         void focus() {
-            int x = focusCellX % gameSize;
-            int y = focusCellY % gameSize;
+            int gx = focusCellX % gameSize;
+            int gy = focusCellY % gameSize;
 
-            int n = (y-1 < 0 ? gameSize-1 : y-1);
-            int e = (x+1 >= gameSize ? 0 : x+1);
-            int s = (y+1 >= gameSize ? 0 : y+1);
-            int w = (x-1 < 0 ? gameSize-1 : x-1);
+            int n = (gy-1 < 0 ? gameSize-1 : gy-1);
+            int e = (gx+1 >= gameSize ? 0 : gx+1);
+            int s = (gy+1 >= gameSize ? 0 : gy+1);
+            int w = (gx-1 < 0 ? gameSize-1 : gx-1);
 
             const SDL_Point neighbours[] = { 
-                {w, n}, {x, n}, {e, n}, 
-                {w, y}, {e,y}, 
-                {w, s}, {x, s}, {e, s}
+                {w, n}, {gx, n}, {e, n}, 
+                {w, gy}, {e,gy}, 
+                {w, s}, {gx, s}, {e, s}
             };
 
             SDL_FRect point = {
-                (float)(offsetX + x * pointSize), 
-                (float)(offsetY + y * pointSize), 
+                (float)(offsetX + gx * pointSize), 
+                (float)(offsetY + gy * pointSize), 
                 (float)pointSize, (float)pointSize};
 
             for(int i = 0; i < std::size(neighbours); i++) {
                 int px = neighbours[i].x;
                 int py = neighbours[i].y;
-                if(!(cells[px + py * gameSize] & cellMaskAlive))
+                if(!getCellState(px,py))
                     continue;
                 SDL_FRect point = {
                     (float)(offsetX + px * pointSize), 
@@ -303,7 +361,12 @@ class ConwayApp : public SDLApp {
         }
 
         void render() {
-            calculateCountAll();
+            // TODO: Maybe save update calculations
+            // if paused and already calculated 
+            // (always set calculated to false when swaping, 
+            // set it to true after calculation)
+            // don't forget to disable surface invalidation
+            SDL_FillSurfaceRect(gameSurface, nullptr, cellColorDead);
             update(); 
             gameTexture.update(gameSurface);
             gameTexture.render(offsetX, offsetY, gameSize*pointSize, gameSize*pointSize);
@@ -318,7 +381,7 @@ class ConwayApp : public SDLApp {
                     gameSize * pointSize, gameSize * pointSize); 
 
             if(!paused || advance > 0) {
-                uint8_t* temp = cells;
+                uint64_t* temp = cells;
                 cells = swap;
                 swap = temp;
             }
@@ -327,6 +390,34 @@ class ConwayApp : public SDLApp {
                 advance--;
 
             helpTexture.render(helpTextOffset, screenHeight-helpTexture.getHeight()-helpTextOffset);
+        }
+
+        /*
+         * Computes the next closest power of two
+         * More information: https://graphics.stanford.edu/%7Eseander/bithacks.html#RoundUpPowerOf2
+         */
+        int nextPowerOfTwo(uint64_t n) {
+           n--;
+           n |= n >> 1;
+           n |= n >> 2;
+           n |= n >> 4;
+           n |= n >> 8;
+           n |= n >> 16;
+           n |= n >> 32;
+           return ++n;
+        }
+
+        bool getCellState(int gx, int gy) {
+            int offset = (15 - gx%16) * 4;
+            uint64_t block = cells[gx/16 + gy * rowLength];
+            
+            return block & (cellMaskAlive << offset);
+        }
+
+        void invertCellState(int gx, int gy) {
+            int offset = (15-gx%16) * 4;
+            uint64_t block = cells[gx/16 + gy * rowLength];
+            cells[gx/16 + gy * rowLength] = block ^ (cellMaskAlive << offset);
         }
 
         void mouseDownEventHandler(SDL_Event& event) {
@@ -349,22 +440,21 @@ class ConwayApp : public SDLApp {
                 return;
             }
 
-            int x = (mousePosX-offsetX)/pointSize;
-            int y = (mousePosY-offsetY)/pointSize;
+            int gx = (mousePosX-offsetX)/pointSize;
+            int gy = (mousePosY-offsetY)/pointSize;
 
-            if(x == lastMouseCellX && y == lastMouseCellY)
+            if(gx == lastMouseCellX && gy == lastMouseCellY)
                 return;
            
             if(drawMode) {
-                int idx = x + y * gameSize;
-                cells[idx] = (cells[idx] & cellMaskCount) | (~cells[idx] & cellMaskAlive);
+                invertCellState(gx, gy);
             } else {
-                focusCellX = x;
-                focusCellY = y;
+                focusCellX = gx;
+                focusCellY = gy;
             }
 
-            lastMouseCellX = x;
-            lastMouseCellY = y;
+            lastMouseCellX = gx;
+            lastMouseCellY = gy;
         }
 
         void mouseMoveEventHandler(SDL_Event& event) {
@@ -397,7 +487,7 @@ class ConwayApp : public SDLApp {
                     break;
 
                 case SDLK_C:
-                    initClear();
+                    initGolClear();
                     break;
 
                 case SDLK_D:
