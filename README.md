@@ -19,10 +19,14 @@ Dependencies
 
 Controls
 --------------------
-- r: Reset
-- c: Clear
-- d: enter/exit draw mode
-- left mouse button: inspect/draw
-- SPACE: Pause/Continue
-- right arrow: advance one step
-- ESC: leave mode
+
+|Button/Combination | Function                                        |
+|-------------------|-------------------------------------------------|
+| r                 | reset (random)                                  |
+| c                 | clear                                           |
+| d                 | enter/exit draw mode                            |
+| left mouse button | inspect/draw                                    |
+| space             | pause/continue                                  |
+| right arrow       | advance one step                                |
+| esc               | leave mode                                      |
+| ctrl-v            | paste pattern from [life lexicon]{http://www.radicaleye.com/lifepage/lexicon.html} |

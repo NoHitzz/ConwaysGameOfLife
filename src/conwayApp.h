@@ -64,7 +64,7 @@ class ConwayApp : public SDLApp {
         int helpTextOffset = 8;
 
         std::string helpText = 
-            "r: reset, c: clear, d: draw, space: pause/continue, right arrow: step";
+            "r: reset, c: clear, d: draw, ctrl-v: paste pattern, space: pause/continue, right arrow: step";
 
     public:
         ConwayApp(uint64_t size) : SDLApp("Conway's Game of Life", 640,  480), 
@@ -86,10 +86,9 @@ class ConwayApp : public SDLApp {
             cells = new uint64_t[arrayLength];
             swap = new uint64_t[arrayLength];
             count = new uint64_t[arrayLength];
-            std::cout << "requesteSize: " << size << ", gameSize: " << gameSize 
-                << ", packedLength: (" << rowLength << ", " << numRows 
-                << "), arrayLength: " << arrayLength 
-                << ", actualLength: " << "??" << "\n";
+            // std::cout << "requesteSize: " << size << ", gameSize: " << gameSize 
+            //     << ", packedLength: (" << rowLength << ", " << numRows 
+            //     << "), arrayLength: " << arrayLength << "\n";
 
             gameSurface = SDL_CreateSurface(gameSize, gameSize, SDL_PIXELFORMAT_XRGB8888);
             if(gameSurface == nullptr)
@@ -158,38 +157,49 @@ class ConwayApp : public SDLApp {
             delete[] nums;
         }
 
-        void initGolPattern(int patternId = 1) {
+        void initGolPattern(int id = 1) {
             uint32_t patterns8x8[][8*8] = {
                 {
-                 0x00000000,
-                 0x00000000,
-                 0x00100000,
-                 0x00011000,
-                 0x00010000,
-                 0x00000000,
-                 0x00000000,
-                 0x00000000
+                    // ?? ends in honeycomb
+                    0x00000000,
+                    0x00000000,
+                    0x00100000,
+                    0x00011000,
+                    0x00010000,
+                    0x00000000,
+                    0x00000000,
+                    0x00000000
                 },
-                { // r-pentomino
-                 0x00000001,
-                 0x00000000,
-                 0x00011000,
-                 0x00110000,
-                 0x00010000,
-                 0x00000000,
-                 0x00000000,
-                 0x10000000
+                {   // r-pentomino
+                    0x00000000,
+                    0x00000000,
+                    0x00011000,
+                    0x00110000,
+                    0x00010000,
+                    0x00000000,
+                    0x00000000,
+                    0x00000000
                 },
-                {
-                 0x10000001,
-                 0x01000000,
-                 0x00100000,
-                 0x00010000,
-                 0x00001000,
-                 0x00000100,
-                 0x00000010,
-                 0x10000001
-                }
+                {   // 180-degree kickback
+                    0x00010000,
+                    0x00100000,
+                    0x00111000,
+                    0x00000000,
+                    0x00000000,
+                    0x00011000,
+                    0x00101000,
+                    0x00001000,
+                },
+                {   // block-laying switch engine
+                    0x00000000,
+                    0x00000010,
+                    0x00001011,
+                    0x00001010,
+                    0x00001000,
+                    0x00100000,
+                    0x10100000,
+                    0x00000000,
+                },
             };
 
             initGolClear();
@@ -198,7 +208,7 @@ class ConwayApp : public SDLApp {
             int xPos = (rowLength)/2;
             int idx = 0;
             for(int y = offset; y < numRows-offset; y++) {
-                cells[xPos + y * rowLength] = ((uint64_t) patterns8x8[patternId][idx++]) << 4*4;
+                cells[xPos + y * rowLength] = (uint64_t) patterns8x8[id][idx++] << (4*4);
             }
         }
 
@@ -419,6 +429,61 @@ class ConwayApp : public SDLApp {
             uint64_t block = cells[gx/16 + gy * rowLength];
             cells[gx/16 + gy * rowLength] = block ^ (cellMaskAlive << offset);
         }
+                    
+        /*
+         * Parses a game of life pattern string 
+         * where 'O' is a live cell and all other characters dead cells.
+         * Such pattern can be found at:
+         * http://www.radicaleye.com/lifepage/lexicon.html         
+         */
+        void displayPattern(const std::string& patternStr) {
+            char alive = 'O';
+
+            int lineLength = 0;
+            std::vector<std::string> lines {};
+            
+            std::string line;    
+            std::istringstream stream(patternStr);
+            while (std::getline(stream, line)) {
+                // Trim start/end
+                line.erase(line.begin(), std::find_if(line.begin(), line.end(), 
+                            [](unsigned char c) { return !std::isspace(c); }));
+                line.erase(std::find_if(line.rbegin(), line.rend(), [](unsigned char c) 
+                            { return !std::isspace(c); }).base(), line.end());
+
+                if(lineLength == 0)
+                    lineLength = line.length();
+
+                if(line.length() != lineLength) {
+                    error("Pasted pattern contains uneven line lengts", patternStr);
+                    return;
+                }
+
+                lines.push_back(line);
+            }
+
+            if(lines.size() > gameSize || lineLength > gameSize) {
+                error("Pasted pattern is too large for game of size", std::to_string(gameSize));
+                return;
+            }
+
+            initGolClear();
+
+            int offsetX = (gameSize - lineLength)/2;
+            int offsetY = (gameSize - lines.size())/2;
+
+            int gx = 0;
+            int gy = 0;
+            for(int i = 0; i < lines.size(); i++) {
+                gx = 0;
+                for(int c = 0; c < lines[i].length(); c++) {
+                    if(lines[i].at(c) == alive)
+                        invertCellState(offsetX + gx, offsetY + gy);          
+                    gx++;
+                }
+                gy++;
+            }
+        }
 
         void mouseDownEventHandler(SDL_Event& event) {
             mouseLeftDown = true;
@@ -515,9 +580,30 @@ class ConwayApp : public SDLApp {
                     focusCellY = -1;
                     break;
 
+                case SDLK_1: initGolPattern(0); break;
+                case SDLK_2: initGolPattern(1); break;
+                case SDLK_3: initGolPattern(2); break;
+                case SDLK_4: initGolPattern(3); break;
+
+                case SDLK_V: 
+                    if(isPaste()) {
+                        paused = true;
+                        drawMode = false;
+                        displayPattern(SDL_GetClipboardText());
+                    }
+                    break;
+
                 default:
                     break;
             }
+        }
+
+        bool isPaste() {
+            SDL_Keymod modifier = SDL_GetModState();
+            return (modifier == SDL_KMOD_LCTRL) 
+                | (modifier == SDL_KMOD_RCTRL) 
+                | (modifier == SDL_KMOD_LGUI) 
+                | (modifier == SDL_KMOD_RGUI);
         }
 };
 
