@@ -42,7 +42,7 @@ class SDLApp {
 
         SDL_Event event;
         bool quit = false;
-        Timer timer = Timer();
+        Timer frameTimer = Timer();
         long lastFrameTimeMs = 0;
         SDL_Color background = {30, 30, 30};
         
@@ -96,6 +96,7 @@ class SDLApp {
 
             fpsTexture.setRenderer(renderer);
             fpsTexture.loadBlank(256, 256, SDL_TEXTUREACCESS_STREAMING, SDL_PIXELFORMAT_ARGB8888);
+            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
         }
 
         ~SDLApp() {
@@ -131,7 +132,7 @@ class SDLApp {
 
         void run() {
             while(!quit) {
-                timer.start();
+                frameTimer.start();
                 SDL_GetRenderOutputSize(renderer, &screenWidth, &screenHeight);
                 SDL_SetRenderDrawColor(renderer, background.r, background.g, background.b, 255);
                 SDL_RenderClear(renderer);
@@ -142,8 +143,8 @@ class SDLApp {
                 renderFps();
 
                 SDL_RenderPresent(renderer);
-                timer.stop();
-                lastFrameTimeMs = timer.getMs();
+                frameTimer.stop();
+                lastFrameTimeMs = frameTimer.getMs();
             }
         }
 
@@ -215,11 +216,9 @@ class SDLApp {
             SDL_Surface* textSurface = TTF_RenderText_Blended(fpsFont, 
                     fpsStr.c_str(), fpsStr.length(), {200,50,50});
             SDL_FRect fclip = {0.0, 0.0, (float)textSurface->w, (float)textSurface->h};
-            // SDL_Rect clip = {0, 0, textSurface->w, textSurface->h};
             fpsTexture.update(textSurface);
             SDL_FRect fpsRect = {offset, offset, (float)fclip.w + textOffsetX*2, 
                 (float)fclip.h + textOffsetTop + textOffsetBottom};
-            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
             SDL_SetRenderDrawColor(renderer, 25, 25, 25, 128);
             SDL_RenderFillRect(renderer, &fpsRect);
             SDL_SetRenderDrawColor(renderer, 255, 255, 255, 30);

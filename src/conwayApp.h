@@ -10,6 +10,7 @@
 
 #include <SDL3_ttf/SDL_ttf.h>
 #include <cstdint>
+#include <fstream>
 #include <string>
 
 #include "sdl3app.h"
@@ -26,6 +27,7 @@ class ConwayApp : public SDLApp {
         int pointSize; 
         int offsetX;
         int offsetY;
+        long generation = 0;
         
         const uint64_t cellMaskAlive = 0x1;
         const uint64_t cellMaskCount = 0xF;
@@ -52,6 +54,13 @@ class ConwayApp : public SDLApp {
         int lastMouseCellY = -1;
         bool mouseLeftDown = false;
 
+        std::string numberKeys = "";
+        Timer numberKeyTimer {}; 
+        long numberKeyTimeout = 1000;
+        const int NUMBERKEY_UPDATE = -1;
+        const int NUMBERKEY_CANCEL = -2;
+        Texture numberKeysTexture;
+
         bool paused = true;
         bool drawMode = false;
         int focusCellX = -1;
@@ -60,8 +69,11 @@ class ConwayApp : public SDLApp {
 
         SDL_Surface* gameSurface;
         Texture gameTexture;
+        Texture generationTexture;
         Texture helpTexture;
         int helpTextOffset = 8;
+
+        std::vector<std::string> patterns {};
 
         std::string helpText = 
             "r: reset, c: clear, d: draw, ctrl-v: paste pattern, space: pause/continue, right arrow: step";
@@ -76,6 +88,7 @@ class ConwayApp : public SDLApp {
             withTextRendering = (gameSize < textCutoff);
             helpTexture.setRenderer(renderer);
             helpTexture.loadText(helpText, monoFont, {200, 200, 200});
+            numberKeysTexture.setRenderer(renderer);
             minOffset += helpTexture.getHeight();
             int gameWindowSize = (int)((gameSize+2*minOffset)/windowScreenRatio);
             int minHelpTextSize = (int)((2*helpTextOffset + helpTexture.getWidth())/windowScreenRatio);
@@ -98,6 +111,10 @@ class ConwayApp : public SDLApp {
             gameTexture.loadBlank(gameSize, gameSize, 
                     SDL_TEXTUREACCESS_STREAMING, SDL_PIXELFORMAT_RGBA8888);
             SDL_SetTextureScaleMode(gameTexture.getTexture(), SDL_SCALEMODE_NEAREST);
+            generationTexture.setRenderer(renderer);
+            generationTexture.loadBlank(256, 512, SDL_TEXTUREACCESS_STREAMING, SDL_PIXELFORMAT_ARGB8888);
+
+            loadPatterns();
             
             initGolRandom();
                         
@@ -157,59 +174,50 @@ class ConwayApp : public SDLApp {
             delete[] nums;
         }
 
-        void initGolPattern(int id = 1) {
-            uint32_t patterns8x8[][8*8] = {
-                {
-                    // ?? ends in honeycomb
-                    0x00000000,
-                    0x00000000,
-                    0x00100000,
-                    0x00011000,
-                    0x00010000,
-                    0x00000000,
-                    0x00000000,
-                    0x00000000
-                },
-                {   // r-pentomino
-                    0x00000000,
-                    0x00000000,
-                    0x00011000,
-                    0x00110000,
-                    0x00010000,
-                    0x00000000,
-                    0x00000000,
-                    0x00000000
-                },
-                {   // 180-degree kickback
-                    0x00010000,
-                    0x00100000,
-                    0x00111000,
-                    0x00000000,
-                    0x00000000,
-                    0x00011000,
-                    0x00101000,
-                    0x00001000,
-                },
-                {   // block-laying switch engine
-                    0x00000000,
-                    0x00000010,
-                    0x00001011,
-                    0x00001010,
-                    0x00001000,
-                    0x00100000,
-                    0x10100000,
-                    0x00000000,
-                },
-            };
-
-            initGolClear();
-
-            int offset = (numRows-8)/2;
-            int xPos = (rowLength)/2;
-            int idx = 0;
-            for(int y = offset; y < numRows-offset; y++) {
-                cells[xPos + y * rowLength] = (uint64_t) patterns8x8[id][idx++] << (4*4);
+        void loadPatterns() {
+            std::string line;
+            std::string path = getBasePath() + "../resources/patterns.txt";
+            std::ifstream patternFile(path);
+            if(!patternFile.is_open()) {
+                error("Failed to load pattern file", path);
+                return;
             }
+
+            bool readingPattern = false;
+            std::string pattern = "";
+            while(std::getline(patternFile, line)) {
+                // Trim start
+                line.erase(line.begin(), std::find_if(line.begin(), line.end(), 
+                            [](unsigned char c) { return !std::isspace(c); }));
+
+                if(line.find("//") == 0 || line.empty())
+                    continue;
+
+                if(line.find("{") != std::string::npos) {
+                    readingPattern = true;
+                    continue;
+                } else if(line.find("}") != std::string::npos) {
+                    readingPattern = false;
+                    patterns.push_back(pattern);
+                    pattern = "";
+                    continue;
+                }
+
+                if(!readingPattern)
+                    error("Syntax error in pattern file", line);
+
+                pattern.append(line + "\n");
+            }
+        }
+
+        void initGolPattern(int id = 0) {
+            generation = 0;
+            if(id > patterns.size()) {
+                error("Invalid pattern code", std::to_string(id));
+                return;
+            }
+
+            displayPattern(patterns[id]);
         }
 
         void debugCellArray() {
@@ -226,6 +234,7 @@ class ConwayApp : public SDLApp {
         }
 
         void initGolRandom() {
+            generation = 0;
             initGolClear();
             for(int i = 0; i < arrayLength; i++) { 
                 for(int j = 0; j < 16; j++)  {
@@ -235,10 +244,12 @@ class ConwayApp : public SDLApp {
         }
         
         void initGolClear() {
+            generation = 0;
             for(int i = 0; i < arrayLength; i++) { cells[i] = 0x0; }
         }
 
         void initGolFull() {
+            generation = 0;
             for(int i = 0; i < arrayLength; i++) { 
                 cells[i] = 0x1111111111111111;
             }
@@ -394,11 +405,17 @@ class ConwayApp : public SDLApp {
                 uint64_t* temp = cells;
                 cells = swap;
                 swap = temp;
+                generation++;
             }
 
             if(advance > 0)
                 advance--;
+                
 
+            onNumberKey(NUMBERKEY_UPDATE);
+            if(numberKeysTexture.isLoaded())
+                numberKeysTexture.render(screenWidth-numberKeysTexture.getWidth()-helpTextOffset, helpTextOffset);
+            renderGeneration();
             helpTexture.render(helpTextOffset, screenHeight-helpTexture.getHeight()-helpTextOffset);
         }
 
@@ -428,6 +445,18 @@ class ConwayApp : public SDLApp {
             int offset = (15-gx%16) * 4;
             uint64_t block = cells[gx/16 + gy * rowLength];
             cells[gx/16 + gy * rowLength] = block ^ (cellMaskAlive << offset);
+        }
+
+        void renderGeneration() {
+            std::string str = "Gen: " + std::to_string(generation);
+            SDL_Surface* textSurface = TTF_RenderText_Blended(monoFont, 
+                    str.c_str(), str.length(), {255, 255, 255});
+            SDL_FRect fclip = {0.0, 0.0, (float)textSurface->w, (float)textSurface->h};
+            generationTexture.update(textSurface);
+
+            generationTexture.render((screenWidth - textSurface->w)/2.f, 
+                    10.f, &fclip);
+            SDL_DestroySurface(textSurface);
         }
                     
         /*
@@ -467,6 +496,7 @@ class ConwayApp : public SDLApp {
                 return;
             }
 
+            paused = true;
             initGolClear();
 
             int offsetX = (gameSize - lineLength)/2;
@@ -530,6 +560,45 @@ class ConwayApp : public SDLApp {
                 mouseInteraction();
         }
 
+        void onNumberKey(int n) {
+            bool running = numberKeyTimer.isRunning();
+            if(!running && n == NUMBERKEY_UPDATE) 
+                return;
+
+            numberKeyTimer.stop();
+            long time = numberKeyTimer.getMs();
+
+            if(n == NUMBERKEY_CANCEL) {
+                numberKeys = "";
+                numberKeysTexture.destroy();
+                numberKeyTimer.stop();
+                return;
+            } else if(n == NUMBERKEY_UPDATE && running) {
+                if(time > numberKeyTimeout) {
+                    int patternId = 0;
+					std::stringstream convert;
+					convert << numberKeys;
+					convert >> patternId;
+                    initGolPattern(patternId);
+                    numberKeys = "";
+                    numberKeysTexture.destroy();
+                    numberKeyTimer.stop();
+                    return;
+                }
+                
+                numberKeyTimer.resume();
+                return;
+            } 
+            
+            if(!running)
+                numberKeyTimer.start();
+            else
+                numberKeyTimer.resume();
+
+            numberKeys.append(std::to_string(n));
+            numberKeysTexture.loadText(numberKeys, monoFont, {255,255,255});
+        }
+
         void keyDownEventHandler(SDL_Event& event) {
             switch(event.key.key) {
                 case SDLK_SPACE:
@@ -549,6 +618,7 @@ class ConwayApp : public SDLApp {
                     focusCellX = -1;
                     focusCellY = -1;
                     drawMode = false;
+                    onNumberKey(NUMBERKEY_CANCEL);
                     break;
 
                 case SDLK_C:
@@ -580,10 +650,16 @@ class ConwayApp : public SDLApp {
                     focusCellY = -1;
                     break;
 
-                case SDLK_1: initGolPattern(0); break;
-                case SDLK_2: initGolPattern(1); break;
-                case SDLK_3: initGolPattern(2); break;
-                case SDLK_4: initGolPattern(3); break;
+                case SDLK_1: onNumberKey(1); break;
+                case SDLK_2: onNumberKey(2); break;
+                case SDLK_3: onNumberKey(3); break;
+                case SDLK_4: onNumberKey(4); break;
+                case SDLK_5: onNumberKey(5); break;
+                case SDLK_6: onNumberKey(6); break;
+                case SDLK_7: onNumberKey(7); break;
+                case SDLK_8: onNumberKey(8); break;
+                case SDLK_9: onNumberKey(9); break;
+                case SDLK_0: onNumberKey(0); break;
 
                 case SDLK_V: 
                     if(isPaste()) {

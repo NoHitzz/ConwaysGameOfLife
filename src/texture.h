@@ -247,6 +247,8 @@ class Texture {
         SDL_Texture* getTexture() { return m_texture; }
         SDL_PixelFormat getFormat() { return m_texture->format; }
 
+        bool isLoaded() { return m_texture != nullptr; }
+
     private:
         void error(std::string msg, std::string detail = "") {
             std::cerr << "[" << "Texture" << "] " << msg; 
