@@ -127,6 +127,8 @@ class SDLApp {
                     mouseMoveEventHandler(event);
                 else if (event.type == SDL_EVENT_WINDOW_RESIZED)
                     windowResized();
+                else if (event.type == SDL_EVENT_MOUSE_WHEEL)
+                    mouseWheelEventHandler(event);
             }
         }
 
@@ -164,6 +166,8 @@ class SDLApp {
         virtual void mouseDownEventHandler(SDL_Event& event) { }
        
         virtual void mouseMoveEventHandler(SDL_Event& event) { }
+        
+        virtual void mouseWheelEventHandler(SDL_Event& event) {}
         
         virtual void windowResized() { }
 
@@ -263,7 +267,7 @@ inline SDL_Color hslToRgb(double h, double s, double l) {
     return SDL_Color{(Uint8) r, (Uint8) g, (Uint8) b};
 }
 
-inline void drawRectangle(SDL_Renderer* renderer, SDL_FRect& rect, int thickness) {
+inline void drawRectangle(SDL_Renderer* renderer, const SDL_FRect& rect, int thickness) {
     SDL_FPoint points[4] = {
         {rect.x+thickness/2.f, rect.y-thickness/2.f}, 
         {rect.x + rect.w-thickness/2.f, rect.y-thickness/2.f}, 

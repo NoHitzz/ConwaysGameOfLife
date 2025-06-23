@@ -17,21 +17,24 @@
 
 class ConwayApp : public SDLApp {
     private: 
-        const int minWindowSize = 256;
+        int minWindowSize = 256;
 
         const int gameSize = 0;
         const int rowLength = 0;
         const int numRows = 0;
         const int arrayLength = 0;
-        int minOffset = 20;
-        int pointSize; 
+        int minOffset = 50;
+        double pointSize = 1.0; 
         int offsetX;
         int offsetY;
         long generation = 0;
-        
+        int zoomFactor;
+        SDL_Point zoomIndexOffset;
+        int zoomedSize;
+
         const uint64_t cellMaskAlive = 0x1;
         const uint64_t cellMaskCount = 0xF;
-        
+
         const Uint32 cellColorAlive = 0xFFFFFFFF;
         const Uint32 cellColorDead = 0x00000000;
 
@@ -41,15 +44,15 @@ class ConwayApp : public SDLApp {
 
         TTF_Font* fontSans = nullptr; 
         bool withTextRendering;
-        int textCutoff = 200;
+        int textCutoff = 128;
         int fontSize;
-        
+
         Texture numbers;
-        int numWidth;
-        int numHeight;
+        int maxNumWidth;
+        int maxNumHeight;
 
         SDL_Point mousePos = {0,0};
-        SDL_Point lastMouseCell = {0,0};
+        SDL_Point lastMouseCell = {-1,-1};
         SDL_Point focusCell = {-1,-1};
         bool mouseLeftDown = false;
         bool mouseCellState = false;
@@ -63,18 +66,43 @@ class ConwayApp : public SDLApp {
 
         bool paused = true;
         bool drawMode = false;
+        bool showHelp = false;
         int advance = 0;
 
         SDL_Surface* gameSurface;
         Texture gameTexture;
         Texture generationTexture;
         Texture helpTexture;
-        int helpTextOffset = 8;
+        Texture statusTexture;
+        int statusOffset = 8;
+        int helpTextPadding = 100;
+        SDL_Point helpTextOffset = {0,0};
 
         std::vector<std::string> patterns {};
 
         std::string helpText = 
-            "r: reset, c: clear, d: draw, ctrl-v: paste pattern, space: pause/continue, right arrow: step";
+            "            --- Help --- \n"
+            " \n"
+            "Controls: \n"
+            "Keycombination:     Function:   \n"
+            "  r                   reset   \n"
+            "  c                   clear \n"
+            "   \n"
+            "  d                   enter/exit draw mode \n"
+            "  left mouse          inspect/draw \n"
+            "  esc                 leave mode/selection \n"
+            "   \n"
+            "  ctrl-v              paste pattern  \n"
+            "  0-9*                load pattern from file \n"
+            "   \n"
+            "  scroll              zoom in/out  \n"
+            " \n"
+            "  space               pause/continue  \n"
+            "  right arrow         step \n"
+            " \n"
+            " \n"
+            "Paste patterns must follow the Life Lexicon format. \n"
+            "Press escape to close this pop-up. \n";
 
     public:
         ConwayApp(uint64_t size) : SDLApp("Conway's Game of Life", 640,  480), 
@@ -83,16 +111,15 @@ class ConwayApp : public SDLApp {
         numRows(gameSize),
         arrayLength(rowLength * numRows) { 
 
-            withTextRendering = (gameSize < textCutoff);
+            zoomIndexOffset = {0,0};
+            zoomFactor = 1;
+            zoomedSize = gameSize;
             helpTexture.setRenderer(renderer);
-            helpTexture.loadText(helpText, monoFont, {200, 200, 200});
+            helpTexture.loadWrappedText(helpText, monoFont, {255, 255, 255}, 640);
             numberKeysTexture.setRenderer(renderer);
-            minOffset += helpTexture.getHeight();
-            int gameWindowSize = (int)((gameSize+2*minOffset)/windowScreenRatio);
-            int minHelpTextSize = (int)((2*helpTextOffset + helpTexture.getWidth())/windowScreenRatio);
-            SDL_SetWindowMinimumSize(window, 
-                    std::max( std::max(gameWindowSize, minWindowSize), minHelpTextSize ), 
-                    std::max(gameWindowSize, minWindowSize));
+            statusTexture.setRenderer(renderer);
+
+            SDL_SetWindowMinimumSize(window, minWindowSize, minWindowSize);
 
             cells = new uint64_t[arrayLength];
             swap = new uint64_t[arrayLength];
@@ -104,19 +131,17 @@ class ConwayApp : public SDLApp {
             gameSurface = SDL_CreateSurface(gameSize, gameSize, SDL_PIXELFORMAT_XRGB8888);
             if(gameSurface == nullptr)
                 std::cerr << SDL_GetError() << "\n";
-            
+
             gameTexture.setRenderer(renderer);
-            gameTexture.loadBlank(gameSize, gameSize, 
-                    SDL_TEXTUREACCESS_STREAMING, SDL_PIXELFORMAT_RGBA8888);
+            gameTexture.loadBlank(gameSize, gameSize, SDL_TEXTUREACCESS_STREAMING, SDL_PIXELFORMAT_RGBA8888);
             SDL_SetTextureScaleMode(gameTexture.getTexture(), SDL_SCALEMODE_NEAREST);
             generationTexture.setRenderer(renderer);
             generationTexture.loadBlank(256, 512, SDL_TEXTUREACCESS_STREAMING, SDL_PIXELFORMAT_ARGB8888);
 
             loadPatterns();
-            
-            initGolRandom();
-                        
             windowResized();
+
+            initGolRandom();
         }
 
         ~ConwayApp() { 
@@ -130,12 +155,20 @@ class ConwayApp : public SDLApp {
         void windowResized() {
             SDL_GetRenderOutputSize(renderer, &screenWidth, &screenHeight);
             int size = std::min(screenHeight, screenWidth);
-            pointSize = std::max((size-2*minOffset)/gameSize, 1);  //TODO: ?? does this max make sense?
-            
-            fontSize = pointSize;
-            offsetX = std::max((screenWidth-gameSize*pointSize)/2.f, 0.f);
-            offsetY = std::max((screenHeight-gameSize*pointSize)/2.f, 0.f);
+            pointSize = (float)(size-2*minOffset)/zoomedSize;  
 
+            offsetX = (screenWidth-zoomedSize*pointSize)/2.f;
+            offsetY = (screenHeight-zoomedSize*pointSize)/2.f;
+
+            helpTextOffset.x = (screenWidth - helpTexture.getWidth())/2;
+            helpTextOffset.y = (screenHeight - helpTexture.getHeight())/2;
+
+            withTextRendering = (zoomedSize <= textCutoff);
+
+            loadNumbersTextue();
+        }
+
+        void loadNumbersTextue() {
             if(!withTextRendering)
                 return;
 
@@ -144,27 +177,28 @@ class ConwayApp : public SDLApp {
                 fontSans = nullptr;
             }
 
+            fontSize = pointSize;
             fontSans = TTF_OpenFont((getBasePath() + "../resources/OpenSans-Regular.ttf").c_str(), fontSize);
             if(fontSans == nullptr) 
                 error("SDL Font creation failed", SDL_GetError());
 
-            numWidth = 0;
-            numHeight = 0;
+            maxNumWidth = 0;
+            maxNumHeight = 0;
             Texture* nums = new Texture[9]();
             for(int i = 0; i < 9; i++) {
-                    nums[i].setRenderer(renderer);
-                    nums[i].loadText(std::to_string(i), fontSans, {0,0,255});
-                    numWidth = std::max(numWidth, nums[i].getWidth());
-                    numHeight = std::max(numHeight, nums[i].getHeight());
+                nums[i].setRenderer(renderer);
+                nums[i].loadText(std::to_string(i), fontSans, {0,0,255});
+                maxNumWidth = std::max(maxNumWidth, nums[i].getWidth());
+                maxNumHeight = std::max(maxNumHeight, nums[i].getHeight());
             }
 
             numbers.setRenderer(renderer);
-            numbers.loadBlank(numWidth*3, numHeight*3, SDL_TEXTUREACCESS_TARGET, nums->getFormat());
+            numbers.loadBlank(maxNumWidth*3, maxNumHeight*3, SDL_TEXTUREACCESS_TARGET, nums->getFormat());
             numbers.setAsRenderTarget();
             for(int i = 0; i < 9; i++) {
-                int x = (numWidth-nums[i].getWidth())/2;
-                int y = (numHeight-nums[i].getHeight())/2;
-                SDL_FRect dest = {(float)((i%3)*numWidth + x), (float)((int)(i/3)*numHeight + y), 
+                int x = (maxNumWidth-nums[i].getWidth())/2;
+                int y = (maxNumHeight-nums[i].getHeight())/2;
+                SDL_FRect dest = {(float)((i%3)*maxNumWidth + x), (float)((int)(i/3)*maxNumHeight + y), 
                     (float)nums[i].getWidth(), (float)nums[i].getHeight()};
                 nums[i].render(dest.x, dest.y);
             }
@@ -240,7 +274,7 @@ class ConwayApp : public SDLApp {
                 }
             }
         }
-        
+
         void initGolClear() {
             generation = 0;
             for(int i = 0; i < arrayLength; i++) { cells[i] = 0x0; }
@@ -298,9 +332,9 @@ class ConwayApp : public SDLApp {
             }
         }
 
-        void renderCellText() {
-            for(int y = 0; y < numRows; y++) {
-                for(int x = 0; x < rowLength; x++) {
+        void updateCellText() {
+            for(int y = zoomIndexOffset.y; y < zoomIndexOffset.y + zoomedSize; y++) {
+                for(int x = std::floor(zoomIndexOffset.x/16.f); x < std::ceil((zoomIndexOffset.x + zoomedSize)/16.f); x++) {
                     renderBlockTextToTexture(x,y);
                 }
             }
@@ -310,7 +344,7 @@ class ConwayApp : public SDLApp {
             uint64_t c = cells[x + y * rowLength];
             const int rows = y * (gameSurface->pitch / 4);
             Uint32* pixels = (Uint32*) (gameSurface->pixels);
-            
+
             // Set pixel color with mask from block (-(0x00...01) = FFFFFFFFFFFFFFFF)
             for(int i = 0; i < 16; i++) {
                 int s = 4 * ((16-1) - i );
@@ -320,24 +354,29 @@ class ConwayApp : public SDLApp {
 
         void renderBlockTextToTexture(int x, int y) {
             uint64_t blockCount = count[x + y * rowLength];
-            
+
             for(int i = 0; i < 16; i++) {
                 int s = 4 * ((16-1) - i);
                 int c = (blockCount & (cellMaskCount << s)) >> s;
-                
+
                 int xPos = (x * 16) + i;
+
+                if(xPos < zoomIndexOffset.x || xPos >= (zoomIndexOffset.x + zoomedSize) 
+                        || y < zoomIndexOffset.y || y >= (zoomIndexOffset.y + zoomedSize))
+                    continue;
+
                 SDL_FRect point = {
-                    (float)(offsetX + xPos * pointSize), 
-                    (float)(offsetY + y * pointSize), 
+                    (float)(offsetX + (xPos-zoomIndexOffset.x) * pointSize),
+                    (float)(offsetY + (y - zoomIndexOffset.y)  * pointSize),
                     (float)pointSize, (float)pointSize};
                 SDL_FRect clip = {
-                    (float)(     (c%3) * numWidth), 
-                    (float)((int)(c/3) * numHeight), 
-                    (float)numWidth, (float)numHeight};
+                    (float)(     (c%3) * maxNumWidth),
+                    (float)((int)(c/3) * maxNumHeight),
+                    (float)maxNumWidth, (float)maxNumHeight};
                 SDL_FRect textRect = {
-                    point.x + (pointSize - numWidth)/2.f, 
-                    point.y + (pointSize-numHeight)/2.f, 
-                    (float)numWidth, (float)numHeight};
+                    (float)(point.x + (pointSize - maxNumWidth)/2.f),
+                    (float)(point.y + (pointSize-maxNumHeight)/2.f),
+                    (float)maxNumWidth, (float)maxNumHeight};
                 numbers.render(textRect.x, textRect.y, &clip);
             }
         }
@@ -358,18 +397,20 @@ class ConwayApp : public SDLApp {
             };
 
             SDL_FRect point = {
-                (float)(offsetX + gx * pointSize), 
-                (float)(offsetY + gy * pointSize), 
+                (float)(offsetX + (gx-zoomIndexOffset.x) * pointSize), 
+                (float)(offsetY + (gy-zoomIndexOffset.y) * pointSize), 
                 (float)pointSize, (float)pointSize};
 
             for(int i = 0; i < std::size(neighbours); i++) {
                 int px = neighbours[i].x;
                 int py = neighbours[i].y;
-                if(!getCellState(px,py))
+                if(!getCellState(px,py) 
+                        || px < zoomIndexOffset.x || px >= (zoomedSize + zoomIndexOffset.x)
+                        || py < zoomIndexOffset.y || py >= (zoomedSize + zoomIndexOffset.y))
                     continue;
                 SDL_FRect point = {
-                    (float)(offsetX + px * pointSize), 
-                    (float)(offsetY + py * pointSize), 
+                    (float)(offsetX + (px-zoomIndexOffset.x) * pointSize), 
+                    (float)(offsetY + (py-zoomIndexOffset.y) * pointSize), 
                     (float)pointSize, (float)pointSize};
                 SDL_SetRenderDrawColor(renderer, 255, 255, 0, 200);
                 drawRectangle(renderer, point, 6);
@@ -388,16 +429,18 @@ class ConwayApp : public SDLApp {
             SDL_FillSurfaceRect(gameSurface, nullptr, cellColorDead);
             update(); 
             gameTexture.update(gameSurface);
-            gameTexture.render(offsetX, offsetY, gameSize*pointSize, gameSize*pointSize);
+            SDL_FRect zoomClip = {(float)(zoomIndexOffset.x), (float)(zoomIndexOffset.y), 
+                (float)(zoomedSize), (float)(zoomedSize)};
+            gameTexture.render(offsetX, offsetY, zoomedSize * pointSize, zoomedSize * pointSize, &zoomClip);
 
             if(withTextRendering)
-                renderCellText();
+                updateCellText();
 
             if(focusCell.x != -1 && focusCell.y != -1)
                 focus();
-            
+
             renderDebugRect("Conway's Game of Life", offsetX, offsetY, 
-                    gameSize * pointSize, gameSize * pointSize); 
+                    zoomedSize * pointSize, zoomedSize * pointSize); 
 
             if(!paused || advance > 0) {
                 uint64_t* temp = cells;
@@ -408,13 +451,22 @@ class ConwayApp : public SDLApp {
 
             if(advance > 0)
                 advance--;
-                
+
+            renderGeneration();
 
             onNumberKey(NUMBERKEY_UPDATE);
             if(numberKeysTexture.isLoaded())
-                numberKeysTexture.render(screenWidth-numberKeysTexture.getWidth()-helpTextOffset, helpTextOffset);
-            renderGeneration();
-            helpTexture.render(helpTextOffset, screenHeight-helpTexture.getHeight()-helpTextOffset);
+                numberKeysTexture.render(screenWidth-numberKeysTexture.getWidth()-statusOffset, statusOffset);
+
+            if(showHelp) {
+                SDL_FRect helpBackground = {(float)helpTextOffset.x - helpTextPadding, (float)helpTextOffset.y - helpTextPadding, 
+                    (float)helpTexture.getWidth() + 2*helpTextPadding, (float)helpTexture.getWidth() + 2*helpTextPadding};
+                SDL_SetRenderDrawColor(renderer, 15, 15, 15, 250);
+                SDL_RenderFillRect(renderer, &helpBackground);
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 25);
+                drawRectangle(renderer, helpBackground, 2);
+                helpTexture.render(helpTextOffset.x, helpTextOffset.y);
+            }
         }
 
         /*
@@ -422,20 +474,20 @@ class ConwayApp : public SDLApp {
          * More information: https://graphics.stanford.edu/%7Eseander/bithacks.html#RoundUpPowerOf2
          */
         int nextPowerOfTwo(uint64_t n) {
-           n--;
-           n |= n >> 1;
-           n |= n >> 2;
-           n |= n >> 4;
-           n |= n >> 8;
-           n |= n >> 16;
-           n |= n >> 32;
-           return ++n;
+            n--;
+            n |= n >> 1;
+            n |= n >> 2;
+            n |= n >> 4;
+            n |= n >> 8;
+            n |= n >> 16;
+            n |= n >> 32;
+            return ++n;
         }
 
         bool getCellState(int gx, int gy) {
             int offset = (15 - gx%16) * 4;
             uint64_t block = cells[gx/16 + gy * rowLength];
-            
+
             return block & (cellMaskAlive << offset);
         }
 
@@ -444,17 +496,17 @@ class ConwayApp : public SDLApp {
             uint64_t block = cells[gx/16 + gy * rowLength];
             cells[gx/16 + gy * rowLength] = block ^ (cellMaskAlive << offset);
         }
-        
+
         void setCellState(int gx, int gy) {
             int offset = (15-gx%16) * 4;
             uint64_t block = cells[gx/16 + gy * rowLength];
-            cells[gx/16 + gy * rowLength] = block & ~(cellMaskAlive << offset);
+            cells[gx/16 + gy * rowLength] = block | (cellMaskAlive << offset);
         }
 
         void unsetCellState(int gx, int gy) {
             int offset = (15-gx%16) * 4;
             uint64_t block = cells[gx/16 + gy * rowLength];
-            cells[gx/16 + gy * rowLength] = block | (cellMaskAlive << offset);
+            cells[gx/16 + gy * rowLength] = block & ~(cellMaskAlive << offset);
         }
 
         void renderGeneration() {
@@ -468,7 +520,7 @@ class ConwayApp : public SDLApp {
                     10.f, &fclip);
             SDL_DestroySurface(textSurface);
         }
-                    
+
         /*
          * Parses a game of life pattern string 
          * where 'O' is a live cell and all other characters dead cells.
@@ -480,7 +532,7 @@ class ConwayApp : public SDLApp {
 
             int lineLength = 0;
             std::vector<std::string> lines {};
-            
+
             std::string line;    
             std::istringstream stream(patternStr);
             while (std::getline(stream, line)) {
@@ -530,47 +582,85 @@ class ConwayApp : public SDLApp {
             focusCell = {-1,-1};
             mouseInteraction(true);
         }
-        
+
         void mouseUpEventHandler(SDL_Event& event) { 
             mouseLeftDown = false;
+            lastMouseCell = {-1, -1};
             mouseCellState = false;
         }
 
+        SDL_Point getCellPosFromScreenPos(const SDL_Point& screenPoint) {
+            int x = (int)((screenPoint.x - offsetX) / pointSize);
+            int y = (int)((screenPoint.y - offsetY) / pointSize);
+            return {x + zoomIndexOffset.x, y + zoomIndexOffset.y};
+        }
+
         void mouseInteraction(bool isClick) {
-            if(mousePos.x < offsetX || mousePos.x >= offsetX + gameSize*pointSize ||
-                    mousePos.y < offsetY || mousePos.y >= offsetY + gameSize*pointSize) {
+            if(mousePos.x < offsetX || mousePos.x >= offsetX + zoomedSize*pointSize ||
+                    mousePos.y < offsetY || mousePos.y >= offsetY + zoomedSize*pointSize) {
                 focusCell = {-1,-1};
                 drawMode = false;
                 return;
             }
 
-            int gx = (mousePos.x-offsetX)/pointSize;
-            int gy = (mousePos.y-offsetY)/pointSize;
+            SDL_Point cellPos = getCellPosFromScreenPos(mousePos); 
 
             if(isClick)
-                mouseCellState = getCellState(gx,gy);
+                mouseCellState = getCellState(cellPos.x, cellPos.y);
 
-            if(gx == lastMouseCell.x && gy == lastMouseCell.y)
+            if(cellPos.x  == lastMouseCell.x && cellPos.y == lastMouseCell.y)
                 return;
-           
-            if(drawMode && mouseCellState) {
-                setCellState(gx, gy);
-            } else if(drawMode && !mouseCellState) {
-                unsetCellState(gx, gy);
+
+            if(drawMode && !mouseCellState) {
+                setCellState(cellPos.x, cellPos.y);
+            } else if(drawMode && mouseCellState) {
+                unsetCellState(cellPos.x, cellPos.y);
             } else {
-                focusCell = {gx, gy};
+                focusCell = {cellPos.x, cellPos.y};
             }
 
-            lastMouseCell = {gx,gy};
+            lastMouseCell = {cellPos.x, cellPos.y};
         }
 
         void mouseMoveEventHandler(SDL_Event& event) {
             mousePos.x = event.motion.x * windowScreenRatio;
             mousePos.y = event.motion.y* windowScreenRatio;
-            
+
             if(mouseLeftDown)
                 mouseInteraction(false);
         }
+
+        void mouseWheelEventHandler(SDL_Event& event) {
+            zoom(event.wheel.y);
+        }
+
+        bool isInRect(const SDL_Point& point, const SDL_Rect& rect) {
+            return point.x >= rect.x && point.y >= rect.y 
+                && point.x <= (rect.x + rect.w) && point.y <= (rect.y + rect.h);
+        }
+
+        void zoom(float amount) {
+            SDL_Point mouseCell = getCellPosFromScreenPos(mousePos);
+            bool useMousePos = isInRect(mousePos, {offsetX, offsetY, (int)(zoomedSize*pointSize), (int)(zoomedSize*pointSize)});
+            int maxZoom = gameSize/2;
+            if(amount > 0 && zoomFactor != maxZoom) {
+                zoomFactor = std::min(zoomFactor * 2, maxZoom);            
+                zoomedSize = gameSize / zoomFactor;
+                zoomIndexOffset.x = std::min(std::min(std::max((useMousePos ? 
+                                    mouseCell.x - zoomedSize/2 : (gameSize-zoomedSize)/2), 0), gameSize-2), gameSize - zoomedSize);
+                zoomIndexOffset.y = std::min(std::min(std::max((useMousePos ? 
+                                    mouseCell.y - zoomedSize/2 : (gameSize-zoomedSize)/2), 0), gameSize-2), gameSize - zoomedSize);
+                windowResized();
+            } else if(amount < 0 && zoomFactor != 1) {
+                zoomFactor = std::max(zoomFactor / 2, 1);
+                zoomedSize = gameSize / zoomFactor;
+                zoomIndexOffset.x = std::min(std::min(std::max((useMousePos ? 
+                                    mouseCell.x - zoomedSize/2 : (gameSize-zoomedSize)/2), 0), gameSize-2), gameSize - zoomedSize);
+                zoomIndexOffset.y = std::min(std::min(std::max((useMousePos ? 
+                                    mouseCell.y - zoomedSize/2 : (gameSize-zoomedSize)/2), 0), gameSize-2), gameSize - zoomedSize);
+                windowResized();
+            }
+        } 
 
         void onNumberKey(int n) {
             bool running = numberKeyTimer.isRunning();
@@ -588,20 +678,20 @@ class ConwayApp : public SDLApp {
             } else if(n == NUMBERKEY_UPDATE && running) {
                 if(time > numberKeyTimeout) {
                     int patternId = 0;
-					std::stringstream convert;
-					convert << numberKeys;
-					convert >> patternId;
+                    std::stringstream convert;
+                    convert << numberKeys;
+                    convert >> patternId;
                     initGolPattern(patternId);
                     numberKeys = "";
                     numberKeysTexture.destroy();
                     numberKeyTimer.stop();
                     return;
                 }
-                
+
                 numberKeyTimer.resume();
                 return;
             } 
-            
+
             if(!running)
                 numberKeyTimer.start();
             else
@@ -618,43 +708,45 @@ class ConwayApp : public SDLApp {
                     paused = !paused;
                     focusCell = {-1,-1};
                     break;
-                
+
+                case SDLK_H: showHelp = !showHelp; break;
+
                 case SDLK_R:
-                    initGolRandom();
-                    focusCell = {-1,-1};
-                    break;
+                             initGolRandom();
+                             focusCell = {-1,-1};
+                             break;
 
                 case SDLK_ESCAPE:
-                    focusCell = {-1,-1};
-                    drawMode = false;
-                    onNumberKey(NUMBERKEY_CANCEL);
-                    break;
+                             focusCell = {-1,-1};
+                             drawMode = false;
+                             onNumberKey(NUMBERKEY_CANCEL);
+                             showHelp = false;
+                             break;
 
                 case SDLK_C:
-                    initGolClear();
-                    break;
+                             initGolClear();
+                             break;
 
                 case SDLK_D:
-                    drawMode = !drawMode;
-                    paused = true;
-                    focusCell = {-1,-1};
-                    lastMouseCell = {-1,-1};
-                    break;
+                             drawMode = !drawMode;
+                             paused = true;
+                             focusCell = {-1,-1};
+                             break;
 
                 case SDLK_UP:
-                    break;
+                             break;
 
                 case SDLK_DOWN:
-                    break;
+                             break;
 
                 case SDLK_LEFT:
-                    break;
+                             break;
 
                 case SDLK_RIGHT:
-                    paused = true;
-                    advance++;
-                    focusCell = {-1,-1};
-                    break;
+                             paused = true;
+                             advance++;
+                             focusCell = {-1,-1};
+                             break;
 
                 case SDLK_1: onNumberKey(1); break;
                 case SDLK_2: onNumberKey(2); break;
@@ -668,15 +760,15 @@ class ConwayApp : public SDLApp {
                 case SDLK_0: onNumberKey(0); break;
 
                 case SDLK_V: 
-                    if(isPaste()) {
-                        paused = true;
-                        drawMode = false;
-                        displayPattern(SDL_GetClipboardText());
-                    }
-                    break;
+                             if(isPaste()) {
+                                 paused = true;
+                                 drawMode = false;
+                                 displayPattern(SDL_GetClipboardText());
+                             }
+                             break;
 
                 default:
-                    break;
+                             break;
             }
         }
 

@@ -52,6 +52,10 @@ class Texture {
             SDL_SetRenderTarget(m_renderer, m_texture);
         }
 
+        void unsetRenderTarget() {
+            SDL_SetRenderTarget(m_renderer, nullptr);
+        }
+
         bool loadSurface(SDL_Surface* surface) {
             destroy();
             m_texture = SDL_CreateTextureFromSurface(m_renderer, surface);
@@ -164,6 +168,28 @@ class Texture {
             return result;
         }
 
+        bool loadWrappedText(std::string text, TTF_Font* font, SDL_Color color, int maxWidth) {
+            bool result = true;
+            destroy();
+            SDL_Surface* textSurface = TTF_RenderText_Blended_Wrapped(font,
+                    text.c_str(), text.length(), color, maxWidth);
+            if(textSurface == nullptr) {
+                error("TTF_RenderText_Blended failed", SDL_GetError());
+                result &= false;
+            }
+            m_texture = SDL_CreateTextureFromSurface(m_renderer, textSurface);
+            if(m_texture == nullptr) {
+                error("SDL_CreateTextureFromSurface failed", SDL_GetError());
+                result &= false;
+            }
+            
+            SDL_DestroySurface(textSurface);
+            m_width = m_texture->w;
+            m_height = m_texture->h;
+
+            return result;
+        }
+
         void update(SDL_Surface* surface, SDL_Rect* clip = nullptr) {
             SDL_UpdateTexture(m_texture, clip, surface->pixels, surface->pitch);
         }
@@ -193,11 +219,11 @@ class Texture {
             m_rotation = 0.0;
         }
 
-        void clear() {
+        void clear(SDL_Color color) {
             setAsRenderTarget();
-            SDL_SetRenderDrawColor(m_renderer, 0,0,0,0);
+            SDL_SetRenderDrawColor(m_renderer, color.r, color.g, color.b, color.a);
             SDL_RenderClear(m_renderer);
-            SDL_SetRenderTarget(m_renderer, nullptr);
+            unsetRenderTarget();
         }
 
         void colorMult(Uint8 r, Uint8 g, Uint8 b) {
@@ -233,9 +259,8 @@ class Texture {
         }
 
         void render(float x, float y, float width, float height, 
-                SDL_FRect* clip = nullptr) {
-            SDL_FRect renderQuad = {x, y, 
-                width, height};
+                SDL_FRect* clip = nullptr) { 
+            SDL_FRect renderQuad = {x, y, width, height};
 
             SDL_RenderTextureRotated( m_renderer, m_texture, 
                     clip, &renderQuad, m_rotation, m_rotCenter, m_flip);
