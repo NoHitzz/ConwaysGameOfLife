@@ -48,23 +48,21 @@ class ConwayApp : public SDLApp {
         int numWidth;
         int numHeight;
 
-        int mousePosX = 0;
-        int mousePosY = 0;
-        int lastMouseCellX = -1;
-        int lastMouseCellY = -1;
+        SDL_Point mousePos = {0,0};
+        SDL_Point lastMouseCell = {0,0};
+        SDL_Point focusCell = {-1,-1};
         bool mouseLeftDown = false;
+        bool mouseCellState = false;
 
         std::string numberKeys = "";
-        Timer numberKeyTimer {}; 
-        long numberKeyTimeout = 1000;
         const int NUMBERKEY_UPDATE = -1;
         const int NUMBERKEY_CANCEL = -2;
+        Timer numberKeyTimer {}; 
+        long numberKeyTimeout = 1000;
         Texture numberKeysTexture;
 
         bool paused = true;
         bool drawMode = false;
-        int focusCellX = -1;
-        int focusCellY = -1;
         int advance = 0;
 
         SDL_Surface* gameSurface;
@@ -345,8 +343,8 @@ class ConwayApp : public SDLApp {
         }
 
         void focus() {
-            int gx = focusCellX % gameSize;
-            int gy = focusCellY % gameSize;
+            int gx = focusCell.x % gameSize;
+            int gy = focusCell.y % gameSize;
 
             int n = (gy-1 < 0 ? gameSize-1 : gy-1);
             int e = (gx+1 >= gameSize ? 0 : gx+1);
@@ -395,7 +393,7 @@ class ConwayApp : public SDLApp {
             if(withTextRendering)
                 renderCellText();
 
-            if(focusCellX != -1 && focusCellY != -1)
+            if(focusCell.x != -1 && focusCell.y != -1)
                 focus();
             
             renderDebugRect("Conway's Game of Life", offsetX, offsetY, 
@@ -445,6 +443,18 @@ class ConwayApp : public SDLApp {
             int offset = (15-gx%16) * 4;
             uint64_t block = cells[gx/16 + gy * rowLength];
             cells[gx/16 + gy * rowLength] = block ^ (cellMaskAlive << offset);
+        }
+        
+        void setCellState(int gx, int gy) {
+            int offset = (15-gx%16) * 4;
+            uint64_t block = cells[gx/16 + gy * rowLength];
+            cells[gx/16 + gy * rowLength] = block & ~(cellMaskAlive << offset);
+        }
+
+        void unsetCellState(int gx, int gy) {
+            int offset = (15-gx%16) * 4;
+            uint64_t block = cells[gx/16 + gy * rowLength];
+            cells[gx/16 + gy * rowLength] = block | (cellMaskAlive << offset);
         }
 
         void renderGeneration() {
@@ -517,47 +527,49 @@ class ConwayApp : public SDLApp {
 
         void mouseDownEventHandler(SDL_Event& event) {
             mouseLeftDown = true;
-            lastMouseCellX = -1;
-            lastMouseCellY = -1;
-            mouseInteraction();
+            focusCell = {-1,-1};
+            mouseInteraction(true);
         }
         
         void mouseUpEventHandler(SDL_Event& event) { 
             mouseLeftDown = false;
+            mouseCellState = false;
         }
 
-        void mouseInteraction() {
-            if(mousePosX < offsetX || mousePosX >= offsetX + gameSize*pointSize ||
-                    mousePosY < offsetY || mousePosY >= offsetY + gameSize*pointSize) {
-                focusCellX = -1;
-                focusCellY = -1;
+        void mouseInteraction(bool isClick) {
+            if(mousePos.x < offsetX || mousePos.x >= offsetX + gameSize*pointSize ||
+                    mousePos.y < offsetY || mousePos.y >= offsetY + gameSize*pointSize) {
+                focusCell = {-1,-1};
                 drawMode = false;
                 return;
             }
 
-            int gx = (mousePosX-offsetX)/pointSize;
-            int gy = (mousePosY-offsetY)/pointSize;
+            int gx = (mousePos.x-offsetX)/pointSize;
+            int gy = (mousePos.y-offsetY)/pointSize;
 
-            if(gx == lastMouseCellX && gy == lastMouseCellY)
+            if(isClick)
+                mouseCellState = getCellState(gx,gy);
+
+            if(gx == lastMouseCell.x && gy == lastMouseCell.y)
                 return;
            
-            if(drawMode) {
-                invertCellState(gx, gy);
+            if(drawMode && mouseCellState) {
+                setCellState(gx, gy);
+            } else if(drawMode && !mouseCellState) {
+                unsetCellState(gx, gy);
             } else {
-                focusCellX = gx;
-                focusCellY = gy;
+                focusCell = {gx, gy};
             }
 
-            lastMouseCellX = gx;
-            lastMouseCellY = gy;
+            lastMouseCell = {gx,gy};
         }
 
         void mouseMoveEventHandler(SDL_Event& event) {
-            mousePosX = event.motion.x * windowScreenRatio;
-            mousePosY = event.motion.y* windowScreenRatio;
+            mousePos.x = event.motion.x * windowScreenRatio;
+            mousePos.y = event.motion.y* windowScreenRatio;
             
             if(mouseLeftDown)
-                mouseInteraction();
+                mouseInteraction(false);
         }
 
         void onNumberKey(int n) {
@@ -604,19 +616,16 @@ class ConwayApp : public SDLApp {
                 case SDLK_SPACE:
                     drawMode = false;
                     paused = !paused;
-                    focusCellX = -1;
-                    focusCellY = -1;
+                    focusCell = {-1,-1};
                     break;
                 
                 case SDLK_R:
                     initGolRandom();
-                    focusCellX = -1;
-                    focusCellY = -1;
+                    focusCell = {-1,-1};
                     break;
 
                 case SDLK_ESCAPE:
-                    focusCellX = -1;
-                    focusCellY = -1;
+                    focusCell = {-1,-1};
                     drawMode = false;
                     onNumberKey(NUMBERKEY_CANCEL);
                     break;
@@ -628,10 +637,8 @@ class ConwayApp : public SDLApp {
                 case SDLK_D:
                     drawMode = !drawMode;
                     paused = true;
-                    focusCellX = -1;
-                    focusCellY = -1;
-                    lastMouseCellX = -1;
-                    lastMouseCellY = -1;
+                    focusCell = {-1,-1};
+                    lastMouseCell = {-1,-1};
                     break;
 
                 case SDLK_UP:
@@ -646,8 +653,7 @@ class ConwayApp : public SDLApp {
                 case SDLK_RIGHT:
                     paused = true;
                     advance++;
-                    focusCellX = -1;
-                    focusCellY = -1;
+                    focusCell = {-1,-1};
                     break;
 
                 case SDLK_1: onNumberKey(1); break;
