@@ -11,7 +11,7 @@ Pasted patterns must follow the Life Lexicon format:
 Cells can be inspected, highlighting live neighbouring cells. Each cell also displays its live neighbour count.  
 Runs at >30 fps for game sizes of up to ~10'000'000 cells.
 
-![SDL3Conway Screenshot](/resources/conway_screenshot.png?raw=true "SDL3 Conway's Game of Life Screenshot")
+![SDL3 Game Of Life Screenshot](/screenshots/gameOfLife_screenshot.png?raw=true "SDL3 Game of Life Screenshot")
 
 Installation
 --------------------

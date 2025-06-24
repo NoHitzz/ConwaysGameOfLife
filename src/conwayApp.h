@@ -536,6 +536,7 @@ class ConwayApp : public SDLApp {
          */
         void displayPattern(const std::string& patternStr) {
             char alive = 'O';
+            char dead = '.';
 
             int lineLength = 0;
             std::vector<std::string> lines {};
@@ -566,7 +567,7 @@ class ConwayApp : public SDLApp {
             }
 
             paused = true;
-            initGolClear();
+            // initGolClear();
 
             int offsetX = (gameSize - lineLength)/2;
             int offsetY = (gameSize - lines.size())/2;
@@ -577,7 +578,9 @@ class ConwayApp : public SDLApp {
                 gx = 0;
                 for(int c = 0; c < lines[i].length(); c++) {
                     if(lines[i].at(c) == alive)
-                        invertCellState(offsetX + gx, offsetY + gy);          
+                        setCellState(offsetX + gx, offsetY + gy);          
+                    else if(lines[i].at(c) == dead)
+                        unsetCellState(offsetX + gx, offsetY + gy);          
                     gx++;
                 }
                 gy++;
