@@ -11,7 +11,10 @@ Pasted patterns must follow the Life Lexicon format:
 Cells can be inspected, highlighting live neighbouring cells. Each cell also displays its live neighbour count.  
 Runs at >30 fps for game sizes of up to ~10'000'000 cells.
 
-![SDL3 Game Of Life Screenshot](/screenshots/gameOfLife_screenshot.png?raw=true "SDL3 Game of Life Screenshot")
+<p float="middle">
+  <img src="screenshots/gameOfLife_screenshot1.png" width="400" />
+  <img src="screenshots/gameOfLife_screenshot2.png" width="400" /> 
+</p>
 
 Installation
 --------------------
