@@ -69,7 +69,8 @@ class ConwayApp : public SDLApp {
         bool showHelp = false;
         int advance = 0;
 
-        SDL_Surface* gameSurface;
+        int pixelPitch;
+        Uint32* pixelData = nullptr;
         Texture gameTexture;
         Texture generationTexture;
         Texture helpTexture;
@@ -124,14 +125,9 @@ class ConwayApp : public SDLApp {
             cells = new uint64_t[arrayLength];
             swap = new uint64_t[arrayLength];
             count = new uint64_t[arrayLength];
-            // std::cout << "requesteSize: " << size << ", gameSize: " << gameSize 
-            //     << ", packedLength: (" << rowLength << ", " << numRows 
-            //     << "), arrayLength: " << arrayLength << "\n";
-
-            gameSurface = SDL_CreateSurface(gameSize, gameSize, SDL_PIXELFORMAT_XRGB8888);
-            if(gameSurface == nullptr)
-                std::cerr << SDL_GetError() << "\n";
-
+            
+            pixelPitch = gameSize * sizeof(Uint32);
+            pixelData = new Uint32[numRows* pixelPitch/4];
             gameTexture.setRenderer(renderer);
             gameTexture.loadBlank(gameSize, gameSize, SDL_TEXTUREACCESS_STREAMING, SDL_PIXELFORMAT_RGBA8888);
             SDL_SetTextureScaleMode(gameTexture.getTexture(), SDL_SCALEMODE_NEAREST);
@@ -142,11 +138,15 @@ class ConwayApp : public SDLApp {
             windowResized();
 
             initGolRandom();
+
+            // std::cout << "requesteSize: " << size << ", gameSize: " << gameSize 
+            //     << ", packedLength: (" << rowLength << ", " << numRows 
+            //     << "), arrayLength: " << arrayLength << "\n";
         }
 
         ~ConwayApp() { 
             TTF_CloseFont(fontSans);
-            SDL_DestroySurface(gameSurface);
+            delete[] pixelData;
             delete[] cells;
             delete[] swap;
             delete[] count;
@@ -332,23 +332,23 @@ class ConwayApp : public SDLApp {
             }
         }
 
-        void updateCellText() {
-            for(int y = zoomIndexOffset.y; y < zoomIndexOffset.y + zoomedSize; y++) {
-                for(int x = std::floor(zoomIndexOffset.x/16.f); x < std::ceil((zoomIndexOffset.x + zoomedSize)/16.f); x++) {
-                    renderBlockTextToTexture(x,y);
-                }
-            }
-        }
-
         void renderBlockToTexture(int x, int y) {
             uint64_t c = cells[x + y * rowLength];
-            const int rows = y * (gameSurface->pitch / 4);
-            Uint32* pixels = (Uint32*) (gameSurface->pixels);
+            const int rows = y * pixelPitch/4;
 
             // Set pixel color with mask from block (-(0x00...01) = FFFFFFFFFFFFFFFF)
             for(int i = 0; i < 16; i++) {
                 int s = 4 * ((16-1) - i );
-                pixels[(x*16) + i + rows] = cellColorAlive & -((c & (cellMaskAlive << s)) >> s);
+                pixelData[(x*16) + i + rows] = cellColorAlive & -((c & (cellMaskAlive << s)) >> s);
+            }
+        }
+
+        void updateCellText() {
+            for(int y = zoomIndexOffset.y; y < zoomIndexOffset.y + zoomedSize; y++) {
+                for(int x = std::floor(zoomIndexOffset.x/16.f); 
+                        x < std::ceil((zoomIndexOffset.x + zoomedSize)/16.f); x++) {
+                    renderBlockTextToTexture(x,y);
+                }
             }
         }
 
@@ -426,9 +426,11 @@ class ConwayApp : public SDLApp {
             // (always set calculated to false when swaping, 
             // set it to true after calculation)
             // don't forget to disable surface invalidation
-            SDL_FillSurfaceRect(gameSurface, nullptr, cellColorDead);
             update(); 
-            gameTexture.update(gameSurface);
+            
+            SDL_Rect zoomedUpdateClip = {0, zoomIndexOffset.y, pixelPitch/4, zoomedSize};
+            gameTexture.update((pixelData + zoomIndexOffset.y * pixelPitch/4), pixelPitch, &zoomedUpdateClip);
+
             SDL_FRect zoomClip = {(float)(zoomIndexOffset.x), (float)(zoomIndexOffset.y), 
                 (float)(zoomedSize), (float)(zoomedSize)};
             gameTexture.render(offsetX, offsetY, zoomedSize * pointSize, zoomedSize * pointSize, &zoomClip);
@@ -459,8 +461,10 @@ class ConwayApp : public SDLApp {
                 numberKeysTexture.render(screenWidth-numberKeysTexture.getWidth()-statusOffset, statusOffset);
 
             if(showHelp) {
-                SDL_FRect helpBackground = {(float)helpTextOffset.x - helpTextPadding, (float)helpTextOffset.y - helpTextPadding, 
-                    (float)helpTexture.getWidth() + 2*helpTextPadding, (float)helpTexture.getWidth() + 2*helpTextPadding};
+                SDL_FRect helpBackground = {(float)helpTextOffset.x - helpTextPadding, 
+                    (float)helpTextOffset.y - helpTextPadding, 
+                    (float)helpTexture.getWidth() + 2*helpTextPadding, 
+                    (float)helpTexture.getWidth() + 2*helpTextPadding};
                 SDL_SetRenderDrawColor(renderer, 15, 15, 15, 250);
                 SDL_RenderFillRect(renderer, &helpBackground);
                 SDL_SetRenderDrawColor(renderer, 255, 255, 255, 25);
@@ -641,23 +645,28 @@ class ConwayApp : public SDLApp {
 
         void zoom(float amount) {
             SDL_Point mouseCell = getCellPosFromScreenPos(mousePos);
-            bool useMousePos = isInRect(mousePos, {offsetX, offsetY, (int)(zoomedSize*pointSize), (int)(zoomedSize*pointSize)});
+            bool useMousePos = isInRect(mousePos, {offsetX, offsetY, 
+                    (int)(zoomedSize*pointSize), (int)(zoomedSize*pointSize)});
             int maxZoom = gameSize/2;
             if(amount > 0 && zoomFactor != maxZoom) {
                 zoomFactor = std::min(zoomFactor * 2, maxZoom);            
                 zoomedSize = gameSize / zoomFactor;
                 zoomIndexOffset.x = std::min(std::min(std::max((useMousePos ? 
-                                    mouseCell.x - zoomedSize/2 : (gameSize-zoomedSize)/2), 0), gameSize-2), gameSize - zoomedSize);
+                                    mouseCell.x - zoomedSize/2 
+                                    : (gameSize-zoomedSize)/2), 0), gameSize-2), gameSize - zoomedSize);
                 zoomIndexOffset.y = std::min(std::min(std::max((useMousePos ? 
-                                    mouseCell.y - zoomedSize/2 : (gameSize-zoomedSize)/2), 0), gameSize-2), gameSize - zoomedSize);
+                                    mouseCell.y - zoomedSize/2 
+                                    : (gameSize-zoomedSize)/2), 0), gameSize-2), gameSize - zoomedSize);
                 windowResized();
             } else if(amount < 0 && zoomFactor != 1) {
                 zoomFactor = std::max(zoomFactor / 2, 1);
                 zoomedSize = gameSize / zoomFactor;
                 zoomIndexOffset.x = std::min(std::min(std::max((useMousePos ? 
-                                    mouseCell.x - zoomedSize/2 : (gameSize-zoomedSize)/2), 0), gameSize-2), gameSize - zoomedSize);
+                                    mouseCell.x - zoomedSize/2 
+                                    : (gameSize-zoomedSize)/2), 0), gameSize-2), gameSize - zoomedSize);
                 zoomIndexOffset.y = std::min(std::min(std::max((useMousePos ? 
-                                    mouseCell.y - zoomedSize/2 : (gameSize-zoomedSize)/2), 0), gameSize-2), gameSize - zoomedSize);
+                                    mouseCell.y - zoomedSize/2 
+                                    : (gameSize-zoomedSize)/2), 0), gameSize-2), gameSize - zoomedSize);
                 windowResized();
             }
         } 
