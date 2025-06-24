@@ -17,7 +17,7 @@
 
 class ConwayApp : public SDLApp {
     private: 
-        int minWindowSize = 256;
+        int minWindowSize = 448;
 
         const int gameSize = 0;
         const int rowLength = 0;
@@ -106,7 +106,7 @@ class ConwayApp : public SDLApp {
             "Press escape to close this pop-up. \n";
 
     public:
-        ConwayApp(uint64_t size) : SDLApp("Conway's Game of Life", 640,  480), 
+        ConwayApp(uint64_t size) : SDLApp("Game of Life", 640,  480), 
         gameSize(std::max(nextPowerOfTwo(size), 16)), 
         rowLength(gameSize / 16), // Every array entry packs 16 horizontal cells
         numRows(gameSize),
@@ -119,6 +119,7 @@ class ConwayApp : public SDLApp {
             helpTexture.loadWrappedText(helpText, monoFont, {255, 255, 255}, 640);
             numberKeysTexture.setRenderer(renderer);
             statusTexture.setRenderer(renderer);
+            statusTexture.loadText("press 'h' for help", monoFont, {200, 200, 200});
 
             SDL_SetWindowMinimumSize(window, minWindowSize, minWindowSize);
 
@@ -464,13 +465,15 @@ class ConwayApp : public SDLApp {
                 SDL_FRect helpBackground = {(float)helpTextOffset.x - helpTextPadding, 
                     (float)helpTextOffset.y - helpTextPadding, 
                     (float)helpTexture.getWidth() + 2*helpTextPadding, 
-                    (float)helpTexture.getWidth() + 2*helpTextPadding};
+                    (float)helpTexture.getHeight() + 2*helpTextPadding};
                 SDL_SetRenderDrawColor(renderer, 15, 15, 15, 250);
                 SDL_RenderFillRect(renderer, &helpBackground);
                 SDL_SetRenderDrawColor(renderer, 255, 255, 255, 25);
                 drawRectangle(renderer, helpBackground, 2);
                 helpTexture.render(helpTextOffset.x, helpTextOffset.y);
             }
+
+            statusTexture.render(statusOffset, screenHeight-statusOffset-statusTexture.getHeight());
         }
 
         /*
