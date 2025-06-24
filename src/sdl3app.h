@@ -43,7 +43,7 @@ class SDLApp {
         SDL_Event event;
         bool quit = false;
         Timer frameTimer = Timer();
-        long lastFrameTimeMs = 0;
+        long lastFrameAverageMs = 0;
         SDL_Color background = {30, 30, 30};
         
         int debugFontSize = 14;
@@ -52,6 +52,8 @@ class SDLApp {
         int monoFontSize = 20;
 
     private:
+        int frameTimesIdx = 0;
+        long frameTimes[8] = {0,0,0,0};
         TTF_Font* fpsFont = nullptr;
         const std::string fpsText = "Fps:";
         const int fpsFontSize = 16;
@@ -146,7 +148,10 @@ class SDLApp {
 
                 SDL_RenderPresent(renderer);
                 frameTimer.stop();
-                lastFrameTimeMs = frameTimer.getMs();
+                lastFrameAverageMs = 0;
+                frameTimes[(++frameTimesIdx)%std::size(frameTimes)] = frameTimer.getMs();
+                for(int i = 0; i < std::size(frameTimes); i++) 
+                    lastFrameAverageMs += frameTimes[i]/std::size(frameTimes);
             }
         }
 
@@ -206,7 +211,7 @@ class SDLApp {
         }
 
         void renderFps() {
-            float fps = 1000.0/lastFrameTimeMs;
+            float fps = 1000.0/lastFrameAverageMs;
 
             float offset = 10;
             float textOffsetX = 8;
@@ -220,7 +225,7 @@ class SDLApp {
             SDL_Surface* textSurface = TTF_RenderText_Blended(fpsFont, 
                     fpsStr.c_str(), fpsStr.length(), {200,50,50});
             SDL_FRect fclip = {0.0, 0.0, (float)textSurface->w, (float)textSurface->h};
-            fpsTexture.update(textSurface);
+            fpsTexture.update(textSurface);     
             SDL_FRect fpsRect = {offset, offset, (float)fclip.w + textOffsetX*2, 
                 (float)fclip.h + textOffsetTop + textOffsetBottom};
             SDL_SetRenderDrawColor(renderer, 25, 25, 25, 128);

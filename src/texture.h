@@ -190,8 +190,30 @@ class Texture {
             return result;
         }
 
+        /*
+         * From SDL Wiki: This is a fairly slow function, 
+         * intended for use with static textures that do not change often.         
+         * Maybe use lock/unlock on streaming texture instead
+         */
         void update(SDL_Surface* surface, SDL_Rect* clip = nullptr) {
             SDL_UpdateTexture(m_texture, clip, surface->pixels, surface->pitch);
+        }
+        
+        /*
+         * From SDL Wiki: This is a fairly slow function, 
+         * intended for use with static textures that do not change often.         
+         * Maybe use lock/unlock on streaming texture instead
+         */
+        void update(void* pixels, int pitch, SDL_Rect* clip = nullptr) {
+            SDL_UpdateTexture(m_texture, clip, pixels, pitch);
+        }
+
+        int lock(const SDL_Rect* rect, void** pixels, int* pitch) {
+            return SDL_LockTexture(m_texture, rect, pixels, pitch);
+        }
+
+        void unlock() {
+            SDL_UnlockTexture(m_texture);
         }
 
         static SDL_Palette* generateGrayscalePalette(const int steps) {
