@@ -42,8 +42,7 @@ class SDLApp {
 
         SDL_Event event;
         bool quit = false;
-        Timer frameTimer = Timer();
-        long lastFrameAverageMs = 0;
+        double lastFrameAverageMs = 0;
         SDL_Color background = {30, 30, 30};
         
         int debugFontSize = 14;
@@ -52,8 +51,7 @@ class SDLApp {
         int monoFontSize = 20;
 
     private:
-        int frameTimesIdx = 0;
-        long frameTimes[8] = {0,0,0,0};
+        Timer frameTimer = Timer(32);
         TTF_Font* fpsFont = nullptr;
         const std::string fpsText = "Fps:";
         const int fpsFontSize = 16;
@@ -148,10 +146,7 @@ class SDLApp {
 
                 SDL_RenderPresent(renderer);
                 frameTimer.stop();
-                lastFrameAverageMs = 0;
-                frameTimes[(++frameTimesIdx)%std::size(frameTimes)] = frameTimer.getMs();
-                for(int i = 0; i < std::size(frameTimes); i++) 
-                    lastFrameAverageMs += frameTimes[i]/std::size(frameTimes);
+                lastFrameAverageMs = frameTimer.getAverageMs();
             }
         }
 
