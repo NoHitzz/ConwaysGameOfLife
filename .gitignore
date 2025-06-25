@@ -16,8 +16,6 @@ checkstyle
 compile_commands.json
 *.sh
 
-*.ttf
-
 *test*
 
 *.class
